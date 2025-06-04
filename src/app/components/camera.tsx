@@ -176,7 +176,7 @@ const videoConstraints = {
             <Webcam
               ref={webcamRef}
               audio={false}
-              screenshotFormat="image/jpeg"
+              screenshotFormat="image/png"
               screenshotQuality={1} // <--- TAMBAHKAN INI (nilai 0-1, 1 adalah kualitas terbaik)
               videoConstraints={videoConstraints}
               className="w-full h-full object-cover"
