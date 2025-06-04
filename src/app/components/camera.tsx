@@ -80,13 +80,13 @@ export default function Camera({ setActiveTab }: CameraProps) {
   }, []);
 
   // 2. Video constraints sekarang menggunakan 'relevantCameras'
-  const videoConstraints = {
-    width: 1280,
-    height: 720,
-    aspectRatio: isWidescreen ? 16 / 9 : 4 / 3,
-    // Tidak perlu lagi if/else, langsung gunakan deviceId dari kamera yang relevan
-    deviceId: relevantCameras[activeDeviceIndex]?.deviceId,
-  };
+const videoConstraints = {
+  width: { ideal: 1920, min: 1280 },
+  height: { ideal: 1080, min: 720 },
+  aspectRatio: isWidescreen ? 16 / 9 : 4 / 3,
+  facingMode: facingMode, // <--- PASTIKAN INI ADA
+  deviceId: relevantCameras[activeDeviceIndex]?.deviceId,
+};
 
   // 3. Fungsi cycleNextCamera juga menggunakan 'relevantCameras'
   const cycleNextCamera = () => {
@@ -174,7 +174,10 @@ export default function Camera({ setActiveTab }: CameraProps) {
           {/* Preview Webcam dengan Crop Guide */}
           <div className="relative w-full aspect-[4/3] bg-gray-900 rounded-lg overflow-hidden shadow-lg">
             <Webcam
-              ref={webcamRef} audio={false} screenshotFormat="image/jpeg"
+              ref={webcamRef}
+              audio={false}
+              screenshotFormat="image/jpeg"
+              screenshotQuality={1} // <--- TAMBAHKAN INI (nilai 0-1, 1 adalah kualitas terbaik)
               videoConstraints={videoConstraints}
               className="w-full h-full object-cover"
               style={{ filter: applyFilterStyle(filter), transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
