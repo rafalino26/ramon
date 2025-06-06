@@ -18,6 +18,7 @@ export const layouts: LayoutInfo[] = [
     { id: '1x2', label: '1 x 2', rows: 1, cols: 2 },
     { id: '2x3', label: '2 x 3', rows: 2, cols: 3 },
     { id: '2x2', label: '2 x 2', rows: 2, cols: 2 },
+    { id: '1x1', label: '1 x 1', rows: 1, cols: 1 },
   ];
 
 // Buat juga layoutMap dari array di atas agar tidak perlu mendefinisikan ulang

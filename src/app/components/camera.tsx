@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState, useMemo } from 'react';
 import Webcam from 'react-webcam';
-import { FaCamera, FaCheckCircle, FaRedo, FaHourglassHalf, FaSyncAlt } from 'react-icons/fa';
-// 1. Impor layoutMap dan LayoutInfo dari file terpusat
+import { FaCamera, FaCheckCircle, FaRedo, FaHourglassHalf, FaSyncAlt, FaTrash } from 'react-icons/fa';
 import { layoutMap, LayoutInfo } from '@/lib/layout';
 
 interface CameraProps {
@@ -23,7 +22,7 @@ const flipImageHorizontally = (dataUrl: string): Promise<string> => {
                 ctx.scale(-1, 1);
                 ctx.drawImage(img, 0, 0);
             }
-            resolve(canvas.toDataURL('image/jpeg'));
+            resolve(canvas.toDataURL('image/png'));
         };
         img.src = dataUrl;
     });
@@ -37,17 +36,18 @@ export default function Camera({ setActiveTab }: CameraProps) {
   const [layout, setLayout] = useState<LayoutInfo>(
     layoutMap['2x2'] || { id: 'default', label: 'Default', rows: 1, cols: 1 }
   );
-  const [capturedImages, setCapturedImages] = useState<string[]>([]);
+  
+  const [capturedImages, setCapturedImages] = useState<(string | null)[]>([]);
   const [isCapturing, setIsCapturing] = useState(false);
   const [countdown, setCountdown] = useState<number>(0);
-
-  const totalSlots = layout.rows * layout.cols;
-  const isComplete = capturedImages.length === totalSlots;
   const [isWidescreen, setIsWidescreen] = useState(false);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [activeDeviceIndex, setActiveDeviceIndex] = useState(0);
 
-  // 1. Logika filter kamera dibuat dinamis menggunakan useMemo
+  const totalSlots = layout.rows * layout.cols;
+  const capturedCount = capturedImages.filter(Boolean).length;
+  const isComplete = capturedCount === totalSlots;
+
   const relevantCameras = useMemo(() => {
     const term = facingMode === 'user' ? 'front' : 'back';
     return devices.filter(
@@ -55,15 +55,17 @@ export default function Camera({ setActiveTab }: CameraProps) {
     );
   }, [devices, facingMode]);
 
-
   useEffect(() => {
     const getDevices = async () => {
-      // Minta izin dulu agar bisa dapat label yang lengkap
-      await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      const mediaDevices = await navigator.mediaDevices.enumerateDevices();
-      setDevices(mediaDevices);
+      try {
+        await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        const mediaDevices = await navigator.mediaDevices.enumerateDevices();
+        setDevices(mediaDevices);
+      } catch(err) {
+        console.error("Error getting devices:", err);
+      }
     };
-    getDevices().catch(err => console.error("Error getting devices:", err));
+    getDevices();
   }, []);
   
   useEffect(() => {
@@ -72,27 +74,26 @@ export default function Camera({ setActiveTab }: CameraProps) {
 
   useEffect(() => {
     const savedLayoutId = localStorage.getItem('selectedLayout');
-    if (savedLayoutId && layoutMap[savedLayoutId as keyof typeof layoutMap]) {
-      setLayout(layoutMap[savedLayoutId as keyof typeof layoutMap]);
-    } else {
-      setLayout(layoutMap['2x2'] || { id: 'default', label: 'Default', rows: 1, cols: 1 });
-    }
+    const newLayout = savedLayoutId && layoutMap[savedLayoutId as keyof typeof layoutMap]
+      ? layoutMap[savedLayoutId as keyof typeof layoutMap]
+      : layoutMap['2x2'] || { id: 'default', label: 'Default', rows: 1, cols: 1 };
+    
+    setLayout(newLayout);
+    setCapturedImages(Array(newLayout.rows * newLayout.cols).fill(null));
   }, []);
 
-  // 2. Video constraints sekarang menggunakan 'relevantCameras'
-const videoConstraints = {
-  width: { ideal: 1920, min: 1280 },
-  height: { ideal: 1080, min: 720 },
-  aspectRatio: isWidescreen ? 16 / 9 : 4 / 3,
-  facingMode: facingMode, // <--- PASTIKAN INI ADA
-  deviceId: relevantCameras[activeDeviceIndex]?.deviceId,
-};
+  const videoConstraints = {
+    width: { ideal: 1920, min: 1280 },
+    height: { ideal: 1080, min: 720 },
+    aspectRatio: isWidescreen ? 16 / 9 : 4 / 3,
+    facingMode: facingMode,
+    deviceId: relevantCameras[activeDeviceIndex]?.deviceId,
+  };
 
-  // 3. Fungsi cycleNextCamera juga menggunakan 'relevantCameras'
   const cycleNextCamera = () => {
-      if(relevantCameras.length > 1) {
-          setActiveDeviceIndex((prevIndex) => (prevIndex + 1) % relevantCameras.length);
-      }
+    if(relevantCameras.length > 1) {
+        setActiveDeviceIndex((prevIndex) => (prevIndex + 1) % relevantCameras.length);
+    }
   };
 
   const applyFilterStyle = (f: string) => {
@@ -108,24 +109,29 @@ const videoConstraints = {
 
   const handleCapture = async () => {
     if (isCapturing || isComplete || !webcamRef.current) return;
+    
     const performCapture = async () => {
       let imageSrc = webcamRef.current?.getScreenshot();
       if (imageSrc) {
         if (facingMode === 'user') {
           imageSrc = await flipImageHorizontally(imageSrc);
         }
-        setCapturedImages(prev => [...prev, imageSrc as string]);
+        
+        const firstEmptyIndex = capturedImages.findIndex(img => img === null);
+        if (firstEmptyIndex !== -1) {
+          const newImages = [...capturedImages];
+          newImages[firstEmptyIndex] = imageSrc;
+          setCapturedImages(newImages);
+        }
       }
       setIsCapturing(false);
     };
 
     if (timer > 0) {
-      setIsCapturing(true);
-      setCountdown(timer);
+      setIsCapturing(true); setCountdown(timer);
       const timerId = setInterval(() => setCountdown(prev => prev - 1), 1000);
       setTimeout(() => {
-        clearInterval(timerId);
-        setCountdown(0);
+        clearInterval(timerId); setCountdown(0);
         performCapture();
       }, timer * 1000);
     } else {
@@ -134,31 +140,35 @@ const videoConstraints = {
   };
 
   const handleReset = () => {
-    setCapturedImages([]);
+    setCapturedImages(Array(totalSlots).fill(null));
     setFacingMode('user');
     setTimer(0);
     setFilter('normal');
+    setIsWidescreen(false);
+  };
+
+  const handleDeletePhoto = (indexToDelete: number) => {
+    const newImages = [...capturedImages];
+    newImages[indexToDelete] = null;
+    setCapturedImages(newImages);
   };
   
   const handleContinueToEdit = () => {
-    localStorage.setItem('capturedImages', JSON.stringify(capturedImages));
+    const finalImages = capturedImages.filter(Boolean) as string[];
+    localStorage.setItem('capturedImages', JSON.stringify(finalImages));
     localStorage.removeItem('uploadedImages');
     setActiveTab('edit');
   };
 
   return (
     <div className="flex flex-col space-y-4">
-{/* KONTROL ATAS */}
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex gap-2">
-          <button onClick={() => setFacingMode(f => f === 'user' ? 'environment' : 'user')} className="px-3 py-2 bg-purple-100 text-purple-600 rounded-lg text-sm">Switch Cam</button>
-          
-          {/* 4. Tombol "Lens" sekarang cerdas, muncul jika ada > 1 kamera relevan (depan atau belakang) */}
-          {relevantCameras.length > 1 && (
-            <button onClick={cycleNextCamera} className="px-3 py-2 bg-purple-100 text-purple-600 rounded-lg text-sm flex items-center gap-1 animate-fade-in"><FaSyncAlt/> Lens</button>
-          )}
-
-          <button onClick={() => setIsWidescreen(w => !w)} className="px-3 py-2 bg-purple-100 text-purple-600 rounded-lg text-sm">{isWidescreen ? 'Normal' : 'Widescreen'}</button>
+            <button onClick={() => setFacingMode(f => f === 'user' ? 'environment' : 'user')} className="px-3 py-2 bg-purple-100 text-purple-600 rounded-lg text-sm">Switch Cam</button>
+            {relevantCameras.length > 1 && (
+              <button onClick={cycleNextCamera} className="px-3 py-2 bg-purple-100 text-purple-600 rounded-lg text-sm flex items-center gap-1 animate-fade-in"><FaSyncAlt/> Lens</button>
+            )}
+            <button onClick={() => setIsWidescreen(w => !w)} className="px-3 py-2 bg-purple-100 text-purple-600 rounded-lg text-sm">{isWidescreen ? 'Normal AR' : 'Wide AR'}</button>
         </div>
         <div className="flex space-x-2">
           <span className='self-center text-sm mr-2 text-purple-700'>Timer:</span>
@@ -169,51 +179,45 @@ const videoConstraints = {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-        
         <div className="flex flex-col items-center gap-4 w-full">
-          {/* Preview Webcam dengan Crop Guide */}
           <div className="relative w-full aspect-[4/3] bg-gray-900 rounded-lg overflow-hidden shadow-lg">
             <Webcam
-              ref={webcamRef}
-              audio={false}
-              screenshotFormat="image/png"
-              screenshotQuality={1} // <--- TAMBAHKAN INI (nilai 0-1, 1 adalah kualitas terbaik)
+              ref={webcamRef} audio={false} screenshotFormat="image/png"
+              screenshotQuality={1} forceScreenshotSourceSize={true}
               videoConstraints={videoConstraints}
               className="w-full h-full object-cover"
               style={{ filter: applyFilterStyle(filter), transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
             />
             {isCapturing && countdown > 0 && (
-              <div className="absolute inset-0 bg-black bg-opacity-70 flex justify-center items-center z-30">
-                <span className="text-white text-9xl font-bold">{countdown}</span>
+              <div className="absolute inset-0 flex justify-center items-center z-30">
+                <span className="text-white text-9xl font-bold drop-shadow-lg [text-shadow:0px_4px_8px_rgba(0,0,0,0.7)]">
+                  {countdown}
+                </span>
               </div>
             )}
             <div 
               className="absolute inset-0 pointer-events-none"
               style={{
                 boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.5)', 
-                width: '95%',
-                height: '95%',
-                top: '50%',
-                left: '50%',
+                width: '95%', height: '95%',
+                top: '50%', left: '50%',
                 transform: 'translate(-50%, -50%)',
                 aspectRatio: `${layout.cols} / ${layout.rows}`,
               }}
             />
           </div>
           
-          {/* Tombol Aksi Utama */}
           <div className="flex justify-center items-center gap-4 pt-2">
             <button onClick={handleReset} className="flex items-center gap-2 px-5 py-3 bg-gray-200 text-gray-700 rounded-full shadow-md font-semibold"><FaRedo /> Reset</button>
             <button onClick={handleCapture} disabled={isComplete || isCapturing} className="flex items-center gap-2 px-8 py-4 bg-purple-600 text-white rounded-full shadow-lg font-bold text-lg disabled:bg-purple-300 disabled:cursor-not-allowed">
                 {isCapturing ? <FaHourglassHalf className="animate-spin"/> : <FaCamera />}
-                Capture ({capturedImages.length}/{totalSlots})
+                Capture ({capturedCount}/{totalSlots})
             </button>
           </div>
 
-          {/* ===== 1. FILTER DIPINDAHKAN KE SINI ===== */}
           <div className="w-full pt-6">
             <div className="flex space-x-4 justify-center overflow-x-auto pb-2">
-              {[{ label: 'Normal', value: 'normal' }, { label: 'B&W', value: 'b&w' }, { label: 'Vintage', 'value': 'vintage' }, { label: 'Vivid', value: 'vivid' }, { label: 'Cool', value: 'cool' }, { label: 'Warm', value: 'warm' }].map((f) => (
+              {[{ label: 'Normal', value: 'normal' }, { label: 'B&W', value: 'b&w' }, { label: 'Vintage', value: 'vintage' }, { label: 'Vivid', value: 'vivid' }, { label: 'Cool', value: 'cool' }, { label: 'Warm', value: 'warm' }].map((f) => (
                 <div key={f.value} onClick={() => setFilter(f.value)} className={`flex-shrink-0 flex flex-col items-center p-2 rounded-xl cursor-pointer w-24 ${filter === f.value ? 'bg-purple-200' : 'bg-purple-50'}`}>
                   <div className="w-full h-16 rounded-md mb-2 bg-gray-300" style={{ filter: applyFilterStyle(f.value) }}/>
                   <span className={`text-xs font-medium ${filter === f.value ? 'text-purple-700' : 'text-purple-500'}`}>{f.label}</span>
@@ -221,23 +225,28 @@ const videoConstraints = {
               ))}
             </div>
           </div>
-                {isComplete && (
-         <button onClick={handleContinueToEdit} className="flex items-center mx-auto gap-2 px-8 py-3 rounded-lg text-white font-semibold shadow-lg transition bg-purple-500 hover:bg-purple-600 animate-pulse mt-4">
-            <FaCheckCircle /> Continue to Editor
-        </button>
-      )}
         </div>
 
-        {/* Kolom Kanan: Grid Hasil Foto */}
         <div 
           className="w-full p-2 bg-gray-100 rounded-lg"
           style={{ aspectRatio: `${layout.cols} / ${layout.rows}` }}
         >
           <div className="grid h-full w-full gap-2" style={{ gridTemplateColumns: `repeat(${layout.cols}, 1fr)`, gridTemplateRows: `repeat(${layout.rows}, 1fr)` }}>
             {Array.from({ length: totalSlots }).map((_, i) => (
-              <div key={i} className="bg-gray-300 rounded-md overflow-hidden flex justify-center items-center">
+              <div key={i} className="bg-gray-300 rounded-md overflow-hidden flex justify-center items-center relative group">
                 {capturedImages[i] ? (
-                  <img src={capturedImages[i]} className="w-full h-full object-cover" alt={`Capture ${i + 1}`} />
+                  <>
+                    <img src={capturedImages[i]} className="w-full h-full object-cover transition-all duration-300 group-hover:brightness-50" alt={`Capture ${i + 1}`} />
+                    <div className="absolute inset-0 flex justify-center items-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <button 
+                        onClick={() => handleDeletePhoto(i)} 
+                        className="text-white text-4xl p-3 bg-black/40 rounded-full hover:bg-red-500/80 transform hover:scale-110 transition-all duration-200"
+                        aria-label="Delete photo"
+                      >
+                        <FaTrash />
+                      </button>
+                    </div>
+                  </>
                 ) : (
                   <FaCamera className="text-gray-400 text-2xl"/>
                 )}
@@ -247,9 +256,11 @@ const videoConstraints = {
         </div>
       </div>
       
-
-
-      {/* ===== 2. FILTER SUDAH DIHAPUS DARI SINI ===== */}
+      {isComplete && (
+         <button onClick={handleContinueToEdit} className="flex items-center mx-auto gap-2 px-8 py-3 rounded-lg text-white font-semibold shadow-lg transition bg-purple-500 hover:bg-purple-600 animate-pulse mt-4">
+            <FaCheckCircle /> Continue to Editor
+        </button>
+      )}
     </div>
   );
 }
