@@ -1,49 +1,41 @@
 // app/components/Navbar.tsx
 'use client';
 
+import { useState } from 'react'; // 1. Impor useState
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import Image from 'next/image';
+import { FaBars, FaTimes } from 'react-icons/fa'; // 2. Impor ikon untuk hamburger & close
 
 export default function Navbar() {
   const pathname = usePathname();
+  const [isMenuOpen, setIsMenuOpen] = useState(false); // 3. State untuk mengontrol menu mobile
 
   const navItems = [
+    { href: '/', label: 'Home' },
     { href: '/photobooth', label: 'Photobooth' },
     { href: '/about-us', label: 'About Us' },
     { href: '/contact', label: 'Contact' },
   ];
 
   return (
-    // 1. DIV PEMBUNGKUS untuk memposisikan navbar
-    // - sticky top-0: Tetap di atas saat di-scroll
-    // - w-full flex justify-center: Membuat kontainer selebar layar dan menempatkan isinya (navbar) di tengah
-    // - py-4: Memberi jarak dari atas layar
     <div className="sticky top-0 z-50 w-full flex justify-center py-4">
+      <nav className="bg-white backdrop-blur-lg shadow-lg rounded-full flex items-center justify-between px-4 py-2 w-auto">
+        {/* Logo selalu terlihat */}
+        <Link href="/" onClick={() => setIsMenuOpen(false)}>
+          <Image
+            src="/ramonlogo.png"
+            alt="Ramon Logo"
+            width={100}
+            height={28}
+            priority
+            className="h-7 w-auto"
+          />
+        </Link>
 
-      {/* 2. NAV SEKARANG MENJADI BENTUK "PIL" */}
-      {/* - w-full dihapus agar lebarnya mengikuti konten
-          - rounded-full ditambahkan untuk membuat sudutnya bulat sempurna
-          - px-4 py-2 ditambahkan untuk padding di dalam pil */}
-      <nav className="bg-white shadow-lg rounded-full flex items-center px-4 py-2">
-        <div className="flex items-center gap-6">
-          
-          {/* Logo Ramon */}
-          <Link href="/" className="flex items-center">
-            <Image
-              src="/ramonlogo.png" // Path ke logo di folder public
-              alt="Ramon Logo"
-              width={100} // Atur lebar logo (dalam piksel)
-              height={28} // Atur tinggi logo (dalam piksel)
-              priority // Prioritaskan loading logo karena penting
-              className="h-7 w-auto" // Sesuaikan tinggi di sini & lebar otomatis
-            />
-          </Link>
-
-          {/* Garis Pemisah Vertikal */}
+        {/* 4. Menu untuk desktop (sembunyi di layar kecil) */}
+        <div className="hidden md:flex items-center gap-4 ml-4">
           <div className="h-6 w-px bg-purple-200"></div>
-
-          {/* 3. TATA LETAK MENU DISATUKAN */}
           <div className="flex items-baseline space-x-2">
             {navItems.map((item) => (
               <Link
@@ -60,7 +52,40 @@ export default function Navbar() {
             ))}
           </div>
         </div>
+        
+        {/* 5. Tombol hamburger untuk mobile (hanya tampil di layar kecil) */}
+        <div className="md:hidden ml-4">
+          <button
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            className="p-2 rounded-full text-purple-700 hover:bg-purple-100"
+            aria-label="Open menu"
+          >
+            {isMenuOpen ? <FaTimes size={20} /> : <FaBars size={20} />}
+          </button>
+        </div>
       </nav>
+
+      {/* 6. Panel menu mobile (muncul saat tombol hamburger di-klik) */}
+      {isMenuOpen && (
+        <div className="md:hidden absolute top-full mt-2 w-11/12 max-w-sm bg-white rounded-2xl shadow-xl overflow-hidden animate-fade-in">
+          <div className="flex flex-col p-4 space-y-2">
+            {navItems.map((item) => (
+              <Link
+                key={item.label}
+                href={item.href}
+                onClick={() => setIsMenuOpen(false)} // Menutup menu saat link di-klik
+                className={`block px-4 py-3 rounded-xl text-base font-medium transition-colors ${
+                  pathname === item.href
+                    ? 'bg-purple-600 text-white'
+                    : 'text-gray-700 hover:bg-purple-100'
+                }`}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
