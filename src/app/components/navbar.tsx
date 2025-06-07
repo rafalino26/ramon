@@ -12,7 +12,6 @@ export default function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false); // 3. State untuk mengontrol menu mobile
 
   const navItems = [
-    { href: '/', label: 'Home' },
     { href: '/photobooth', label: 'Photobooth' },
     { href: '/about-us', label: 'About Us' },
     { href: '/contact', label: 'Contact' },

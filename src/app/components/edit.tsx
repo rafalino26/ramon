@@ -8,8 +8,11 @@ import { FaBorderAll, FaPalette, FaDownload } from 'react-icons/fa';
 import { layoutMap, LayoutInfo } from '@/lib/layout';
 import PhotostripPreview from './photostrip';
 
-export default function Edit() {
-  const [images, setImages] = useState<string[]>([]);
+interface EditProps {
+  images: string[];
+}
+
+export default function Edit({ images }: EditProps) {
   const [layout, setLayout] = useState<LayoutInfo>({ id: 'default', label: 'Default', rows: 1, cols: 1 });
   const [activePanel, setActivePanel] = useState<'border' | 'color'>('border');
   const [borderColor, setBorderColor] = useState('#ffffff'); // Warna border tetap string (hex)
@@ -24,12 +27,17 @@ export default function Edit() {
       setLayout(layoutMap[savedLayoutId as keyof typeof layoutMap]);
     }
 
-    const uploaded = localStorage.getItem('uploadedImages');
-    const captured = localStorage.getItem('capturedImages');
-    if (uploaded) setImages(JSON.parse(uploaded));
-    else if (captured) setImages(JSON.parse(captured));
-
+    // Tidak perlu lagi membaca 'uploadedImages' atau 'capturedImages' dari localStorage
   }, []);
+
+  if (images.length === 0) {
+    return (
+      <div className="text-center text-purple-500 p-8">
+        <h3 className="text-xl font-semibold">No Images to Edit</h3>
+        <p className="text-sm mt-2">Please go back to capture or upload photos.</p>
+      </div>
+    );
+  }
 
  const handleDownload = (format: 'png' | 'jpeg') => {
     if (photostripRef.current === null) return;

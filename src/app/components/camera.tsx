@@ -6,7 +6,7 @@ import { FaCamera, FaCheckCircle, FaRedo, FaHourglassHalf, FaSyncAlt, FaTrash } 
 import { layoutMap, LayoutInfo } from '@/lib/layout';
 
 interface CameraProps {
-  setActiveTab: (tab: 'camera' | 'edit' | 'layout') => void;
+  onCaptureComplete: (images: string[]) => void;
 }
 
 const flipImageHorizontally = (dataUrl: string): Promise<string> => {
@@ -28,8 +28,9 @@ const flipImageHorizontally = (dataUrl: string): Promise<string> => {
     });
 };
 
-export default function Camera({ setActiveTab }: CameraProps) {
+export default function Camera({ onCaptureComplete }: CameraProps) {
   const webcamRef = useRef<Webcam>(null);
+  const [photoToDelete, setPhotoToDelete] = useState<number | null>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [timer, setTimer] = useState<number>(0);
   const [filter, setFilter] = useState('normal');
@@ -147,18 +148,30 @@ export default function Camera({ setActiveTab }: CameraProps) {
     setIsWidescreen(false);
   };
 
-  const handleDeletePhoto = (indexToDelete: number) => {
+    const handleSelectPhotoForDeletion = (index: number) => {
+    // Jika foto yang sama diklik lagi, batal pilih (sembunyikan tombol hapus)
+    if (photoToDelete === index) {
+      setPhotoToDelete(null);
+    } else {
+      // Jika foto lain yang diklik, pilih foto tersebut
+      setPhotoToDelete(index);
+    }
+  };
+
+    const handleDeletePhoto = (indexToDelete: number) => {
     const newImages = [...capturedImages];
     newImages[indexToDelete] = null;
     setCapturedImages(newImages);
+    setPhotoToDelete(null); // Reset pilihan setelah foto dihapus
   };
   
   const handleContinueToEdit = () => {
-    const finalImages = capturedImages.filter(Boolean) as string[];
-    localStorage.setItem('capturedImages', JSON.stringify(finalImages));
-    localStorage.removeItem('uploadedImages');
-    setActiveTab('edit');
-  };
+      // Filter gambar null sebelum mengirim ke induk
+      const finalImages = capturedImages.filter(Boolean) as string[];
+      
+      // Panggil fungsi dari parent, jangan gunakan localStorage
+      onCaptureComplete(finalImages);
+    };
 
   return (
     <div className="flex flex-col space-y-4">
@@ -232,14 +245,31 @@ export default function Camera({ setActiveTab }: CameraProps) {
           style={{ aspectRatio: `${layout.cols} / ${layout.rows}` }}
         >
           <div className="grid h-full w-full gap-2" style={{ gridTemplateColumns: `repeat(${layout.cols}, 1fr)`, gridTemplateRows: `repeat(${layout.rows}, 1fr)` }}>
-            {Array.from({ length: totalSlots }).map((_, i) => (
-              <div key={i} className="bg-gray-300 rounded-md overflow-hidden flex justify-center items-center relative group">
+             {Array.from({ length: totalSlots }).map((_, i) => (
+              // 4. JSX diubah: group/group-hover dihapus, diganti onClick & class kondisional
+              <div 
+                key={i} 
+                onClick={() => capturedImages[i] && handleSelectPhotoForDeletion(i)} // Klik div ini untuk memilih/batal
+                className="bg-gray-300 rounded-md overflow-hidden flex justify-center items-center relative cursor-pointer"
+              >
                 {capturedImages[i] ? (
                   <>
-                    <img src={capturedImages[i]} className="w-full h-full object-cover transition-all duration-300 group-hover:brightness-50" alt={`Capture ${i + 1}`} />
-                    <div className="absolute inset-0 flex justify-center items-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <img 
+                      src={capturedImages[i]} 
+                      className={`w-full h-full object-cover transition-all duration-300 ${
+                        photoToDelete === i ? 'brightness-50' : '' // Efek gelap jika terpilih
+                      }`} 
+                      alt={`Capture ${i + 1}`} 
+                    />
+                    {/* Overlay yang tampilannya bergantung pada state 'photoToDelete' */}
+                    <div className={`absolute inset-0 flex justify-center items-center transition-opacity duration-300 ${
+                        photoToDelete === i ? 'opacity-100' : 'opacity-0 pointer-events-none' // Tampil/sembunyi berdasarkan state
+                    }`}>
                       <button 
-                        onClick={() => handleDeletePhoto(i)} 
+                        onClick={(e) => {
+                          e.stopPropagation(); // Mencegah klik menyebar ke div di belakangnya
+                          handleDeletePhoto(i);
+                        }} 
                         className="text-white text-4xl p-3 bg-black/40 rounded-full hover:bg-red-500/80 transform hover:scale-110 transition-all duration-200"
                         aria-label="Delete photo"
                       >

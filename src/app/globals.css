@@ -47,7 +47,7 @@ body {
 .animated-bg {
   background: linear-gradient(-45deg, #6a0dad, #b266ff, #e6ccff, #d9b3ff);
   background-size: 400% 400%;
-  animation: bgGradientFlow 12s ease infinite;
+  animation: bgGradientFlow 8s ease infinite;
 }
 
 @keyframes textGradientFlow {
@@ -69,5 +69,5 @@ body {
   -webkit-background-clip: text;
   color: transparent;
   -webkit-text-fill-color: transparent;
-  animation: textGradientFlow 12s ease infinite;
+  animation: textGradientFlow 8s ease infinite;
 }
