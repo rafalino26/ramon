@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { SketchPicker, ColorResult } from 'react-color';
 import { toPng, toJpeg } from 'html-to-image';
-import { FaBorderAll, FaPalette, FaDownload } from 'react-icons/fa';
+import { FaBorderAll, FaPalette, FaDownload, FaImages } from 'react-icons/fa';
 import { layoutMap, LayoutInfo } from '@/lib/layout';
 import PhotostripPreview from './photostrip';
 
@@ -15,8 +15,10 @@ interface EditProps {
 export default function Edit({ images }: EditProps) {
   const [layout, setLayout] = useState<LayoutInfo>({ id: 'default', label: 'Default', rows: 1, cols: 1 });
   const [activePanel, setActivePanel] = useState<'border' | 'color'>('border');
-  const [borderColor, setBorderColor] = useState('#ffffff'); // Warna border tetap string (hex)
-  const [borderStyle, setBorderStyle] = useState('rounded-2xl');
+  const [borderColor, setBorderColor] = useState('#ffffff');
+  
+  // 1. Nilai default state sekarang termasuk padding
+  const [frameStyle, setFrameStyle] = useState('rounded-lg p-4'); 
   const [clipPathStyle, setClipPathStyle] = useState('');
   
   const photostripRef = useRef<HTMLDivElement>(null);
@@ -72,8 +74,13 @@ export default function Edit({ images }: EditProps) {
   };
   
   
-  const handleBorderStyle = (style: string, clipPath: string = '') => {
-      setBorderStyle(style);
+  const handleFrameStyleChange = (style: string) => {
+      setFrameStyle(style);
+      setClipPathStyle(''); // Reset clip-path saat gaya bingkai biasa dipilih
+  }
+  
+  const handleClipPathChange = (clipPath: string) => {
+      setFrameStyle(''); // Hapus gaya bingkai biasa
       setClipPathStyle(clipPath);
   }
 
@@ -94,18 +101,17 @@ export default function Edit({ images }: EditProps) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
       <div className="flex flex-col items-center gap-4">
+        {/* 2. `className` sekarang dihapus, karena dikontrol oleh state `frameStyle` */}
         <PhotostripPreview
           ref={photostripRef}
           layout={layout}
           images={images}
           borderColor={borderColor}
-          borderStyle={borderStyle}
+          borderStyle={frameStyle} // Menggunakan state frameStyle
           clipPathStyle={clipPathStyle}
-          className="p-6"
         />
-
+        {/* Tombol download tidak berubah */}
       </div>
-
       {/* Kolom Kanan: Panel Kontrol Edit */}
 <div className="w-full bg-purple-50 p-4 rounded-2xl flex-shrink-0 flex flex-col"> {/* Tambahkan flex flex-col di sini */}
   {/* Bagian Tab Atas (Border & Color) */}
@@ -126,15 +132,21 @@ export default function Edit({ images }: EditProps) {
 
   {/* Konten Panel yang Aktif */}
   <div className="flex-grow"> {/* Tambahkan flex-grow agar panel ini mengisi ruang */}
-    {activePanel === 'border' && (
-      <div className="space-y-3 animate-fade-in">
-        <h4 className="font-semibold text-purple-800">Border Style</h4>
-        <div className="grid grid-cols-2 gap-3">
-          <button onClick={() => handleBorderStyle('rounded-none')} className="h-16 border-2 border-purple-300 bg-white flex items-center justify-center text-purple-400">Sharp</button>
-          <button onClick={() => handleBorderStyle('rounded-2xl')} className="h-16 border-2 border-purple-300 bg-white rounded-2xl flex items-center justify-center text-purple-400">Rounded</button>
-        </div>
-      </div>
-    )}
+{activePanel === 'border' && (
+          <div className="space-y-3 animate-fade-in">
+            <h4 className="font-semibold text-purple-800">Frame Style</h4>
+            {/* 3. Panel Border diperbarui dengan opsi Polaroid */}
+            <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => handleFrameStyleChange('p-3')} className="h-16 border-2 border-purple-300 bg-white flex items-center justify-center text-purple-400">Thin</button>
+                <button onClick={() => handleFrameStyleChange('rounded-xl p-4')} className="h-16 border-2 border-purple-300 bg-white rounded-xl flex items-center justify-center text-purple-400">Rounded</button>
+                {/* Tombol Polaroid */}
+                <button onClick={() => handleFrameStyleChange('rounded-md px-3 pt-3 pb-18')} className="h-16 border-2 border-purple-300 bg-white rounded-md flex items-center justify-center text-purple-400">
+                  <FaImages className="mr-2"/> Polaroid
+                </button>
+                 <button onClick={() => handleFrameStyleChange('rounded-full p-5')} className="h-16 border-2 border-purple-300 bg-white rounded-full flex items-center justify-center text-purple-400">Circle</button>
+            </div>
+          </div>
+        )}
     {activePanel === 'color' && (
       <div className="space-y-4 animate-fade-in">
         <h4 className="font-semibold text-purple-800 mb-2">Border Color</h4>

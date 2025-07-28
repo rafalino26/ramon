@@ -5,37 +5,37 @@ import { forwardRef, CSSProperties } from 'react';
 import { LayoutInfo } from '@/lib/layout';
 import { FaCamera } from 'react-icons/fa';
 
-// Definisikan props yang akan diterima oleh komponen ini
 interface PhotostripPreviewProps {
   layout: LayoutInfo;
-  images: string[];
+  images: (string | null)[]; // Terima array yang bisa berisi null
   borderColor?: string;
   borderStyle?: string;
   clipPathStyle?: string;
   className?: string;
 }
 
-// Komponen ini menggunakan forwardRef agar kita bisa meneruskan 'ref' dari parent (untuk tombol download)
 const PhotostripPreview = forwardRef<HTMLDivElement, PhotostripPreviewProps>(
   ({ layout, images, borderColor, borderStyle, clipPathStyle, className }, ref) => {
     
     const totalSlots = layout.rows * layout.cols;
 
     return (
+      // Kontainer luar sekarang tidak lagi memiliki aspectRatio
       <div
         ref={ref}
         className={`relative overflow-hidden shadow-lg ${className} ${borderStyle}`}
         style={{ 
           backgroundColor: borderColor, 
           clipPath: clipPathStyle,
-          aspectRatio: `${layout.cols} / ${layout.rows}`,
         }}
       >
+        {/* Kontainer grid di dalam sekarang yang memiliki aspectRatio */}
         <div
           className="grid h-full w-full gap-x-2 gap-y-4"
           style={{
             gridTemplateRows: `repeat(${layout.rows}, 1fr)`,
             gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
+            aspectRatio: `${layout.cols} / ${layout.rows}`, // <-- Properti ini pindah ke sini
           }}
         >
           {Array.from({ length: totalSlots }).map((_, i) => (
@@ -43,7 +43,6 @@ const PhotostripPreview = forwardRef<HTMLDivElement, PhotostripPreviewProps>(
               {images[i] ? (
                 <img src={images[i]} className="w-full h-full object-cover" alt={`slot ${i + 1}`} />
               ) : (
-                // Tampilkan ikon kamera jika slot gambar kosong
                 <FaCamera className="text-gray-400 text-2xl" />
               )}
             </div>
@@ -54,5 +53,5 @@ const PhotostripPreview = forwardRef<HTMLDivElement, PhotostripPreviewProps>(
   }
 );
 
-PhotostripPreview.displayName = 'PhotostripPreview'; // Good practice for forwardRef
+PhotostripPreview.displayName = 'PhotostripPreview';
 export default PhotostripPreview;
