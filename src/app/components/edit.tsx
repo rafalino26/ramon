@@ -5,7 +5,6 @@ import { useState, useEffect, useRef } from "react";
 import { SketchPicker, ColorResult } from "react-color";
 import { toBlob } from "html-to-image";
 import { FaBorderAll, FaPalette, FaDownload, FaImages } from "react-icons/fa";
-import { FaArrowLeft, FaPlus, FaTrash, FaEdit } from "react-icons/fa"; // (kalau kamu butuh di UI lain, aman dihapus)
 import { layoutMap, LayoutInfo } from "@/lib/layout";
 import PhotostripPreview from "./photostrip";
 
@@ -45,25 +44,44 @@ export default function Edit({ images }: EditProps) {
     );
   };
 
-  const handleDownload = async (format: "png" | "jpeg") => {
-    if (!photostripRef.current) return;
+  // ✅ penting: tunggu semua img selesai load + decode sebelum di-capture (Safari iOS sering motret kepagian)
+  const waitForImagesReady = async (root: HTMLElement) => {
+    const imgs = Array.from(root.querySelectorAll("img"));
 
-    const ext = format === "jpeg" ? "jpg" : "png";
-    const filename = `ramon-photobooth.${ext}`;
+    await Promise.all(
+      imgs.map((img) => {
+        const anyImg = img as any;
 
-    try {
-      const blob = await toBlob(photostripRef.current, {
-        cacheBust: true,
-        backgroundColor: borderColor,
-        ...(format === "jpeg" ? { quality: 0.9 } : {}),
-      });
+        // sudah complete
+        if (img.complete && img.naturalWidth > 0) {
+          return anyImg.decode?.().catch(() => {});
+        }
 
-      if (!blob) throw new Error("Failed to create blob");
+        // belum complete -> tunggu load
+        return new Promise<void>((resolve) => {
+          const done = async () => {
+            try {
+              await anyImg.decode?.();
+            } catch {}
+            resolve();
+          };
 
-      // iOS: prefer Share Sheet (Save Image)
-      if (isIOS() && "share" in navigator) {
+          img.addEventListener("load", done, { once: true });
+          img.addEventListener("error", () => resolve(), { once: true });
+        });
+      })
+    );
+
+    // fonts bisa bikin layout berubah tepat saat capture
+    // @ts-ignore
+    await (document as any).fonts?.ready?.catch?.(() => {});
+  };
+
+  const downloadOrShareBlob = async (blob: Blob, filename: string) => {
+    // iOS: prefer Share Sheet (Save Image)
+    if (isIOS() && "share" in navigator) {
+      try {
         const file = new File([blob], filename, { type: blob.type });
-
         const canShareFiles =
           (navigator as any).canShare?.({ files: [file] }) ?? true;
 
@@ -72,33 +90,81 @@ export default function Edit({ images }: EditProps) {
             files: [file],
             title: "Ramon Photobooth",
           });
-          return;
+          return true;
         }
+      } catch (e) {
+        // lanjut ke fallback
+        console.error("iOS share failed:", e);
       }
+    }
 
-      // Default download (Android/Windows/Desktop)
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+    // Default download (Android/Windows/Desktop)
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    // revoke belakangan biar gak ke-cancel di Safari
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    return true;
+  };
+
+  const handleDownload = async (format: "png" | "jpeg") => {
+    if (!photostripRef.current) return;
+
+    const node = photostripRef.current;
+
+    const ext = format === "jpeg" ? "jpg" : "png";
+    const filename = `ramon-photobooth.${ext}`;
+
+    try {
+      // ✅ wait images ready (fix blank/gray boxes on iOS)
+      await waitForImagesReady(node);
+
+      // ✅ lock ukuran capture (fix crop bottom on iOS)
+      const rect = node.getBoundingClientRect();
+      const width = Math.ceil(rect.width);
+      const height = Math.ceil(rect.height);
+
+      const blob = await toBlob(node, {
+        cacheBust: true,
+        backgroundColor: borderColor,
+        width,
+        height,
+        pixelRatio: 2,
+        ...(format === "jpeg" ? { quality: 0.9 } : {}),
+      });
+
+      if (!blob) throw new Error("Failed to create blob");
+
+      await downloadOrShareBlob(blob, filename);
     } catch (err) {
       console.error("Download error:", err);
 
-      // Fallback Safari-friendly: open image in new tab (user can long-press Save Image)
+      // ✅ fallback Safari-friendly: open image in new tab (user can long-press Save Image)
       try {
-        const blob = await toBlob(photostripRef.current!, {
+        await waitForImagesReady(node);
+
+        const rect = node.getBoundingClientRect();
+        const width = Math.ceil(rect.width);
+        const height = Math.ceil(rect.height);
+
+        const blob = await toBlob(node, {
           cacheBust: true,
           backgroundColor: borderColor,
+          width,
+          height,
+          pixelRatio: 2,
           ...(format === "jpeg" ? { quality: 0.9 } : {}),
         });
-        if (!blob) return;
 
+        if (!blob) return;
         const url = URL.createObjectURL(blob);
         window.open(url, "_blank", "noopener,noreferrer");
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
       } catch (e) {
         console.error("Fallback error:", e);
       }
@@ -189,9 +255,12 @@ export default function Edit({ images }: EditProps) {
                   Rounded
                 </button>
 
+                {/* ✅ FIX: pb-18 bukan class tailwind default -> ganti pb-[72px] */}
                 <button
                   type="button"
-                  onClick={() => handleFrameStyleChange("rounded-md px-3 pt-3 pb-18")}
+                  onClick={() =>
+                    handleFrameStyleChange("rounded-md px-3 pt-3 pb-[72px]")
+                  }
                   className="h-16 border-2 border-purple-300 bg-white rounded-md flex items-center justify-center text-purple-400"
                 >
                   <FaImages className="mr-2" /> Polaroid
