@@ -23,11 +23,11 @@ export default function Edit({ images }: EditProps) {
   const [activePanel, setActivePanel] = useState<"border" | "color">("border");
   const [borderColor, setBorderColor] = useState("#ffffff");
 
-  // keep your preview styles (still used by PhotostripPreview)
+  // preview style (untuk UI)
   const [frameStyle, setFrameStyle] = useState("rounded-lg p-4");
   const [clipPathStyle, setClipPathStyle] = useState("");
 
-  // NEW: preset for export canvas so result matches preview
+  // export preset (untuk canvas)
   const [framePreset, setFramePreset] = useState<FramePreset>("rounded");
 
   const photostripRef = useRef<HTMLDivElement>(null);
@@ -82,7 +82,7 @@ export default function Edit({ images }: EditProps) {
       }
     }
 
-    // Default download
+    // default download
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -93,24 +93,46 @@ export default function Edit({ images }: EditProps) {
     setTimeout(() => URL.revokeObjectURL(url), 1500);
   };
 
-  const loadImage = (src: string) =>
-    new Promise<HTMLImageElement>((resolve, reject) => {
+  // ✅ dataURL -> Blob -> ObjectURL -> Image (lebih stabil di iOS)
+  const loadImageSafe = async (src: string) => {
+    // Debug prefix biar kamu bisa cek di iOS console
+    console.log("export src prefix:", src.slice(0, 30));
+
+    const res = await fetch(src); // works for dataURL too
+    const blob = await res.blob();
+
+    const url = URL.createObjectURL(blob);
+    try {
       const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = src;
-      // dataURL is fine, if someday you use remote urls:
-      // img.crossOrigin = "anonymous";
-    });
+      img.decoding = "async";
+      // img.crossOrigin = "anonymous"; // kalau suatu saat pakai remote url
+      img.src = url;
+
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("Image load failed"));
+      });
+
+      // decode (Safari kadang butuh)
+      // @ts-ignore
+      await img.decode?.().catch?.(() => {});
+
+      return img;
+    } finally {
+      // jangan revoke terlalu cepat sebelum drawImage (kita revoke setelah selesai draw)
+      // jadi revoke-nya dilakukan setelah draw, bukan di sini
+    }
+  };
 
   const getExportMetrics = (preset: FramePreset) => {
-    // base cell size for sharp export
-    const cell = 720; // each photo slot size
-    const gap = 24;
+    // ✅ iOS: kecilkan canvas biar aman memory
+    // desktop/android boleh besar
+    const baseCell = isIOS() ? 420 : 640; // <--- penting
+    const gap = isIOS() ? 16 : 22;
 
-    let paddingTop = 64;
-    let paddingSide = 64;
-    let paddingBottom = 64;
+    let paddingTop = 56;
+    let paddingSide = 56;
+    let paddingBottom = 56;
     let radius = 48;
 
     if (preset === "thin") {
@@ -124,7 +146,7 @@ export default function Edit({ images }: EditProps) {
     if (preset === "polaroid") {
       paddingTop = 56;
       paddingSide = 56;
-      paddingBottom = 160; // extra bottom like polaroid caption space
+      paddingBottom = isIOS() ? 120 : 160;
       radius = 24;
     }
     if (preset === "circle") {
@@ -132,21 +154,19 @@ export default function Edit({ images }: EditProps) {
       radius = 9999;
     }
 
-    const gridW = layout.cols * cell + (layout.cols - 1) * gap;
-    const gridH = layout.rows * cell + (layout.rows - 1) * gap;
+    const gridW = layout.cols * baseCell + (layout.cols - 1) * gap;
+    const gridH = layout.rows * baseCell + (layout.rows - 1) * gap;
 
     const canvasW = gridW + paddingSide * 2;
     const canvasH = gridH + paddingTop + paddingBottom;
 
     return {
-      cell,
+      cell: baseCell,
       gap,
       paddingTop,
       paddingSide,
       paddingBottom,
       radius,
-      gridW,
-      gridH,
       canvasW,
       canvasH,
     };
@@ -176,9 +196,6 @@ export default function Edit({ images }: EditProps) {
 
     const m = getExportMetrics(framePreset);
 
-    // load all images
-    const loaded = await Promise.all(images.map(loadImage));
-
     const canvas = document.createElement("canvas");
     canvas.width = m.canvasW;
     canvas.height = m.canvasH;
@@ -194,38 +211,71 @@ export default function Edit({ images }: EditProps) {
     ctx.fillRect(0, 0, m.canvasW, m.canvasH);
     ctx.restore();
 
-    // draw each slot
+    // load images one by one (biar 1 error gak ngebunuh semuanya)
+    const objectUrlsToRevoke: string[] = [];
+
     for (let r = 0; r < layout.rows; r++) {
       for (let c = 0; c < layout.cols; c++) {
         const idx = r * layout.cols + c;
-        const img = loaded[idx];
-        if (!img) continue;
+        const src = images[idx];
+        if (!src) continue;
 
         const x = m.paddingSide + c * (m.cell + m.gap);
         const y = m.paddingTop + r * (m.cell + m.gap);
 
-        // cover-crop math (object-fit: cover)
-        const iw = img.naturalWidth;
-        const ih = img.naturalHeight;
-        const scale = Math.max(m.cell / iw, m.cell / ih);
-        const sw = m.cell / scale;
-        const sh = m.cell / scale;
-        const sx = (iw - sw) / 2;
-        const sy = (ih - sh) / 2;
+        try {
+          // load via fetch->blob->objectURL
+          const res = await fetch(src);
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          objectUrlsToRevoke.push(url);
 
-        // optional slot rounding (match preview vibe)
-        const slotRadius = framePreset === "rounded" ? 24 : framePreset === "polaroid" ? 16 : 0;
-        ctx.save();
-        if (slotRadius > 0) {
-          roundRectPath(ctx, x, y, m.cell, m.cell, slotRadius);
-          ctx.clip();
+          const img = new Image();
+          img.decoding = "async";
+          img.src = url;
+
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error("Image load failed"));
+          });
+
+          // @ts-ignore
+          await img.decode?.().catch?.(() => {});
+
+          const iw = img.naturalWidth || img.width;
+          const ih = img.naturalHeight || img.height;
+
+          // object-fit: cover
+          const scale = Math.max(m.cell / iw, m.cell / ih);
+          const sw = m.cell / scale;
+          const sh = m.cell / scale;
+          const sx = (iw - sw) / 2;
+          const sy = (ih - sh) / 2;
+
+          const slotRadius =
+            framePreset === "rounded" ? 20 : framePreset === "polaroid" ? 14 : 0;
+
+          ctx.save();
+          if (slotRadius > 0) {
+            roundRectPath(ctx, x, y, m.cell, m.cell, slotRadius);
+            ctx.clip();
+          }
+          ctx.drawImage(img, sx, sy, sw, sh, x, y, m.cell, m.cell);
+          ctx.restore();
+        } catch (e) {
+          console.error("draw slot failed idx:", idx, e);
+          // draw placeholder (optional)
+          ctx.save();
+          ctx.fillStyle = "rgba(0,0,0,0.08)";
+          ctx.fillRect(x, y, m.cell, m.cell);
+          ctx.restore();
         }
-        ctx.drawImage(img, sx, sy, sw, sh, x, y, m.cell, m.cell);
-        ctx.restore();
       }
     }
 
-    // output blob
+    // revoke all objectURLs after drawing
+    objectUrlsToRevoke.forEach((u) => URL.revokeObjectURL(u));
+
     const blob: Blob | null = await new Promise((resolve) => {
       canvas.toBlob(
         (b) => resolve(b),
@@ -235,7 +285,6 @@ export default function Edit({ images }: EditProps) {
     });
 
     if (!blob) throw new Error("Failed to create blob");
-
     await shareOrDownloadBlob(blob, filename);
   };
 
@@ -244,7 +293,7 @@ export default function Edit({ images }: EditProps) {
       await exportWithCanvas(format);
     } catch (e) {
       console.error("Export failed:", e);
-      // fallback: open in new tab as dataURL
+      // fallback: open blank canvas (minimal)
       try {
         const m = getExportMetrics(framePreset);
         const canvas = document.createElement("canvas");
@@ -252,9 +301,6 @@ export default function Edit({ images }: EditProps) {
         canvas.height = m.canvasH;
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
-
-        roundRectPath(ctx, 0, 0, m.canvasW, m.canvasH, m.radius);
-        ctx.clip();
         ctx.fillStyle = borderColor;
         ctx.fillRect(0, 0, m.canvasW, m.canvasH);
 
@@ -264,7 +310,11 @@ export default function Edit({ images }: EditProps) {
             : canvas.toDataURL("image/png");
 
         const win = window.open();
-        if (win) win.document.write(`<img src="${dataUrl}" style="max-width:100%;height:auto;" />`);
+        if (win) {
+          win.document.write(
+            `<img src="${dataUrl}" style="max-width:100%;height:auto;" />`
+          );
+        }
       } catch {}
     }
   };
@@ -273,7 +323,9 @@ export default function Edit({ images }: EditProps) {
     return (
       <div className="text-center text-purple-500 p-8">
         <h3 className="text-xl font-semibold">No Images to Edit</h3>
-        <p className="text-sm mt-2">Please go back to capture or upload photos.</p>
+        <p className="text-sm mt-2">
+          Please go back to capture or upload photos.
+        </p>
       </div>
     );
   }
@@ -333,7 +385,9 @@ export default function Edit({ images }: EditProps) {
 
                 <button
                   type="button"
-                  onClick={() => handleFrameStyleChange("rounded-xl p-4", "rounded")}
+                  onClick={() =>
+                    handleFrameStyleChange("rounded-xl p-4", "rounded")
+                  }
                   className="h-16 border-2 border-purple-300 bg-white rounded-xl flex items-center justify-center text-purple-400"
                 >
                   Rounded
@@ -341,7 +395,9 @@ export default function Edit({ images }: EditProps) {
 
                 <button
                   type="button"
-                  onClick={() => handleFrameStyleChange("rounded-md px-3 pt-3 pb-[72px]", "polaroid")}
+                  onClick={() =>
+                    handleFrameStyleChange("rounded-md px-3 pt-3 pb-[72px]", "polaroid")
+                  }
                   className="h-16 border-2 border-purple-300 bg-white rounded-md flex items-center justify-center text-purple-400"
                 >
                   <FaImages className="mr-2" /> Polaroid
@@ -349,7 +405,9 @@ export default function Edit({ images }: EditProps) {
 
                 <button
                   type="button"
-                  onClick={() => handleFrameStyleChange("rounded-full p-5", "circle")}
+                  onClick={() =>
+                    handleFrameStyleChange("rounded-full p-5", "circle")
+                  }
                   className="h-16 border-2 border-purple-300 bg-white rounded-full flex items-center justify-center text-purple-400"
                 >
                   Circle
@@ -363,7 +421,9 @@ export default function Edit({ images }: EditProps) {
 
           {activePanel === "color" && (
             <div className="space-y-4 animate-fade-in">
-              <h4 className="font-semibold text-purple-800 mb-2">Border Color</h4>
+              <h4 className="font-semibold text-purple-800 mb-2">
+                Border Color
+              </h4>
               <SketchPicker
                 color={borderColor}
                 onChangeComplete={handleColorChange}
