@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { FaCamera, FaLayerGroup, FaEdit } from "react-icons/fa";
 import { FaArrowUp } from "react-icons/fa6"; // <-- tambah ini
 import Camera from "../components/camera";
-import Layout from "../components/layout";
+import Layout from "../components/LayoutPicker";
 import Edit from "../components/edit";
 import Link from "next/link";
 
