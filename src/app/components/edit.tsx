@@ -128,12 +128,12 @@ export default function Edit({ images }: EditProps) {
     // ✅ iOS: kecilkan canvas biar aman memory
     // desktop/android boleh besar
     const baseCell = isIOS() ? 420 : 640; // <--- penting
-    const gap = isIOS() ? 16 : 22;
+    const gap = isIOS() ? 60 : 60;
 
     let paddingTop = 56;
     let paddingSide = 56;
     let paddingBottom = 56;
-    let radius = 48;
+    let radius = 0; // ✅ frame luar selalu kotak
 
     if (preset === "thin") {
       paddingTop = paddingSide = paddingBottom = 28;
@@ -146,8 +146,8 @@ export default function Edit({ images }: EditProps) {
     if (preset === "polaroid") {
       paddingTop = 56;
       paddingSide = 56;
-      paddingBottom = isIOS() ? 120 : 160;
-      radius = 24;
+      paddingBottom = isIOS() ? 150 : 200;
+      radius = 0;
     }
     if (preset === "circle") {
       paddingTop = paddingSide = paddingBottom = 64;
@@ -252,8 +252,7 @@ export default function Edit({ images }: EditProps) {
           const sx = (iw - sw) / 2;
           const sy = (ih - sh) / 2;
 
-          const slotRadius =
-            framePreset === "rounded" ? 20 : framePreset === "polaroid" ? 14 : 0;
+          const slotRadius = 0; // ✅ foto juga kotak
 
           ctx.save();
           if (slotRadius > 0) {
@@ -396,7 +395,7 @@ export default function Edit({ images }: EditProps) {
                 <button
                   type="button"
                   onClick={() =>
-                    handleFrameStyleChange("rounded-md px-3 pt-3 pb-[72px]", "polaroid")
+                    handleFrameStyleChange("px-3 pt-3 pb-[82px]", "polaroid")
                   }
                   className="h-16 border-2 border-purple-300 bg-white rounded-md flex items-center justify-center text-purple-400"
                 >
