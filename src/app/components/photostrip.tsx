@@ -49,8 +49,10 @@ const PhotostripPreview = forwardRef<HTMLDivElement, Props>(
     const style = {
       backgroundColor: design.borderColor,
       backgroundImage: background ? `url("${svgUrl(background)}")` : undefined,
-      width: Math.max(100, Math.min(340, 440 * getLayoutAspect(layout))),
-      maxWidth: "100%",
+      // Reserve space for the widest frame so changing padding never shrinks photos.
+      "--photo-width": `${Math.max(68, Math.min(308, 440 * getLayoutAspect(layout) - 32))}px`,
+      width: "min(var(--photo-width), calc(100% - 90px))",
+      boxSizing: "content-box",
       "--frame-space": `${narrow ? design.padding / 2 : design.padding}px`,
       "--photo-gap": `${design.gap}px`,
     } as CSSProperties;

@@ -13,6 +13,11 @@ import {
   FiRotateCcw,
   FiRotateCw,
   FiRefreshCw,
+  FiTrash2,
+  FiCopy,
+  FiMinus,
+  FiPlus,
+  FiRepeat,
 } from "react-icons/fi";
 import type {
   PhotoboothSession,
@@ -152,6 +157,9 @@ export default function Edit({
     change({ stickers });
   };
   const common = { design, onChange: change, onBegin: begin, onEnd: end };
+  const activeSticker = design.stickers.find(
+    (sticker) => sticker.id === selected,
+  );
 
   if (!images.some(Boolean))
     return (
@@ -213,6 +221,96 @@ export default function Edit({
             </button>
           </div>
         </div>
+        {activeSticker && (
+          <div
+            className="sticker-quick-tools"
+            role="group"
+            aria-label="Sticker quick actions"
+          >
+            <span>Selected sticker</span>
+            <div>
+              <button
+                type="button"
+                aria-label="Decrease sticker size"
+                title="Smaller"
+                onClick={() =>
+                  updateSticker(activeSticker.id, {
+                    size: activeSticker.size - 0.04,
+                  })
+                }
+              >
+                <FiMinus />
+              </button>
+              <button
+                type="button"
+                aria-label="Increase sticker size"
+                title="Bigger"
+                onClick={() =>
+                  updateSticker(activeSticker.id, {
+                    size: activeSticker.size + 0.04,
+                  })
+                }
+              >
+                <FiPlus />
+              </button>
+              <button
+                type="button"
+                aria-label="Rotate sticker left"
+                title="Rotate left 15 degrees"
+                onClick={() =>
+                  updateSticker(activeSticker.id, {
+                    rotation:
+                      ((activeSticker.rotation + 345 + 180) % 360) - 180,
+                  })
+                }
+              >
+                <FiRotateCcw />
+              </button>
+              <button
+                type="button"
+                aria-label="Rotate sticker right"
+                title="Rotate right 15 degrees"
+                onClick={() =>
+                  updateSticker(activeSticker.id, {
+                    rotation: ((activeSticker.rotation + 15 + 180) % 360) - 180,
+                  })
+                }
+              >
+                <FiRotateCw />
+              </button>
+              <button
+                type="button"
+                aria-label="Flip selected sticker"
+                title="Flip"
+                onClick={() =>
+                  updateSticker(activeSticker.id, {
+                    flipped: !activeSticker.flipped,
+                  })
+                }
+              >
+                <FiRepeat />
+              </button>
+              <button
+                type="button"
+                aria-label="Duplicate selected sticker"
+                title="Duplicate"
+                disabled={design.stickers.length >= MAX_STICKERS}
+                onClick={() => duplicateSticker(activeSticker.id)}
+              >
+                <FiCopy />
+              </button>
+              <button
+                type="button"
+                aria-label="Remove sticker from preview"
+                title="Delete"
+                onClick={() => removeSticker(activeSticker.id)}
+              >
+                <FiTrash2 />
+              </button>
+            </div>
+            <small>Drag the corner to resize · drag ↻ to rotate</small>
+          </div>
+        )}
         <div className="preview-stage">
           <PhotostripPreview
             ref={preview}

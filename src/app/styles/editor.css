@@ -618,7 +618,7 @@
     gap: 0;
   }
   .preview-stage .photostrip {
-    max-width: min(100%, 210px) !important;
+    width: min(var(--photo-width), 178px, calc(100% - 90px));
   }
   .preview-toolbar {
     margin-bottom: 7px;
@@ -675,5 +675,97 @@
 @media (prefers-reduced-motion: reduce) {
   .sticker-catalog button {
     transition: none;
+  }
+}
+.sticker-move {
+  display: block;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  touch-action: none;
+  cursor: grab;
+}
+.placed-sticker.is-selected {
+  z-index: 4;
+}
+.sticker-handle {
+  position: absolute;
+  right: -12px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  background: #8552cf;
+  color: white;
+  border: 2px solid white;
+  border-radius: 50%;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
+  touch-action: none;
+  box-shadow: 0 2px 6px #30253f30;
+}
+.sticker-handle-resize {
+  bottom: -12px;
+  cursor: nwse-resize;
+}
+.sticker-handle-rotate {
+  top: -12px;
+  cursor: crosshair;
+}
+.sticker-quick-tools {
+  padding: 8px;
+  margin-bottom: 8px;
+  border: 1px solid #e6d8f2;
+  border-radius: 12px;
+  background: #faf6ff;
+}
+.sticker-quick-tools > span {
+  display: block;
+  font-size: 10px;
+  color: #76578c;
+  margin-bottom: 5px;
+}
+.sticker-quick-tools > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.sticker-quick-tools button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 5px;
+  border-radius: 8px;
+  background: white;
+  color: #7040b5;
+  border: 1px solid #e6d8f2;
+}
+.sticker-quick-tools small {
+  display: block;
+  margin-top: 5px;
+  font-size: 9px;
+  color: #80668f;
+}
+@media (max-width: 767px) {
+  .editor-preview-column:has(.sticker-quick-tools) .preview-stage {
+    max-height: min(24svh, 200px);
+    min-height: 100px;
+  }
+  .sticker-quick-tools > span,
+  .sticker-quick-tools small {
+    display: none;
+  }
+  .sticker-quick-tools > div {
+    gap: 3px;
+  }
+  .sticker-quick-tools button {
+    flex: 1;
+    min-width: 25px;
+    width: auto;
   }
 }

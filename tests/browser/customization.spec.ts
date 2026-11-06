@@ -417,6 +417,132 @@ test("creative, portrait and larger grids export their last slot without distort
   }
 });
 
+test("border width grows the frame while preserving photo size and crop", async ({
+  page,
+}) => {
+  await arrange(page, "Portrait solo");
+  for (const frame of ["Rounded", "Thin", "Polaroid", "Film", "Double"]) {
+    await page.getByRole("button", { name: frame, exact: true }).click();
+    const slider = page.getByLabel("Border width", { exact: true });
+    await slider.press("Home");
+    const before = await page
+      .locator('[data-testid="photostrip"]')
+      .evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const photo = element
+          .querySelector("[data-photo-slot]")!
+          .getBoundingClientRect();
+        return {
+          width: box.width,
+          height: box.height,
+          photoWidth: photo.width,
+          photoHeight: photo.height,
+        };
+      });
+    await slider.press("End");
+    const after = await page
+      .locator('[data-testid="photostrip"]')
+      .evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const photo = element
+          .querySelector("[data-photo-slot]")!
+          .getBoundingClientRect();
+        return {
+          width: box.width,
+          height: box.height,
+          photoWidth: photo.width,
+          photoHeight: photo.height,
+        };
+      });
+    expect(after.width).toBeGreaterThan(before.width);
+    expect(after.height).toBeGreaterThan(before.height);
+    expect(after.photoWidth).toBeCloseTo(before.photoWidth, 1);
+    expect(after.photoHeight).toBeCloseTo(before.photoHeight, 1);
+    await expect(
+      page.getByRole("button", { name: "PNG", exact: true }),
+    ).toBeEnabled();
+  }
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("selected stickers expose resize and rotate handles plus quick delete and duplicate", async ({
+  page,
+}) => {
+  await arrange(page);
+  await page.getByRole("button", { name: "Stickers", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Add Nailong bunga", exact: true })
+    .click();
+  const object = page.locator(".placed-sticker");
+  const originalWidth = await object.evaluate((element) => element.style.width);
+  const resize = page.getByRole("button", {
+    name: "Drag to resize sticker",
+    exact: true,
+  });
+  await resize.scrollIntoViewIfNeeded();
+  const box = await resize.boundingBox();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    box!.x + box!.width / 2 + 16,
+    box!.y + box!.height / 2 + 16,
+    { steps: 5 },
+  );
+  await page.mouse.up();
+  await expect
+    .poll(() => object.evaluate((element) => parseFloat(element.style.width)))
+    .toBeGreaterThan(parseFloat(originalWidth));
+  await page
+    .getByRole("button", { name: "Undo design change", exact: true })
+    .click();
+  await expect
+    .poll(() => object.evaluate((element) => element.style.width))
+    .toBe(originalWidth);
+  const originalTransform = await object.evaluate(
+    (element) => element.style.transform,
+  );
+  const rotate = page.getByRole("button", {
+    name: "Drag to rotate sticker",
+    exact: true,
+  });
+  await rotate.scrollIntoViewIfNeeded();
+  const rotationBox = await rotate.boundingBox();
+  await page.mouse.move(rotationBox!.x + 14, rotationBox!.y + 14);
+  await page.mouse.down();
+  await page.mouse.move(rotationBox!.x + 34, rotationBox!.y + 44, { steps: 5 });
+  await page.mouse.up();
+  await expect
+    .poll(() => object.evaluate((element) => element.style.transform))
+    .not.toBe(originalTransform);
+  await page
+    .getByRole("button", { name: "Undo design change", exact: true })
+    .click();
+  await expect
+    .poll(() => object.evaluate((element) => element.style.transform))
+    .toBe(originalTransform);
+  await page
+    .getByRole("button", { name: "Rotate sticker right", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("Sticker rotation", { exact: true }),
+  ).toHaveValue("15");
+  await page
+    .getByRole("button", { name: "Duplicate selected sticker", exact: true })
+    .click();
+  await expect(object).toHaveCount(2);
+  await page
+    .getByRole("button", { name: "Remove sticker from preview", exact: true })
+    .click();
+  await expect(object).toHaveCount(1);
+  await expect(
+    page.getByRole("button", { name: "PNG", exact: true }),
+  ).toBeEnabled();
+});
+
 test("elliptical photo corners match the preview on portrait and wide slots", async ({
   page,
 }) => {

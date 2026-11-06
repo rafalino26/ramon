@@ -84,6 +84,101 @@ export default function StickerPanel({
   };
   return (
     <section>
+      {selected && (
+        <div
+          className="selected-sticker-tools"
+          aria-label="Selected sticker controls"
+        >
+          <div className="tool-section-title">
+            <h3>{selected.name}</h3>
+            <button
+              type="button"
+              className="small-icon-button"
+              aria-label="Delete selected sticker"
+              onClick={() => onRemove(selected.id)}
+            >
+              <FiTrash2 />
+            </button>
+          </div>
+          <RangeField
+            label="Sticker size"
+            min={8}
+            max={80}
+            value={selected.size * 100}
+            suffix="%"
+            onChange={(value) => onUpdate(selected.id, { size: value / 100 })}
+            onBegin={onBegin}
+            onEnd={onEnd}
+          />
+          <RangeField
+            label="Sticker rotation"
+            min={-180}
+            max={180}
+            value={selected.rotation}
+            suffix="°"
+            onChange={(value) => onUpdate(selected.id, { rotation: value })}
+            onBegin={onBegin}
+            onEnd={onEnd}
+          />
+          <div className="range-pair">
+            <RangeField
+              label="Horizontal position"
+              min={0}
+              max={100}
+              value={selected.x * 100}
+              suffix="%"
+              onChange={(value) => onUpdate(selected.id, { x: value / 100 })}
+              onBegin={onBegin}
+              onEnd={onEnd}
+            />
+            <RangeField
+              label="Vertical position"
+              min={0}
+              max={100}
+              value={selected.y * 100}
+              suffix="%"
+              onChange={(value) => onUpdate(selected.id, { y: value / 100 })}
+              onBegin={onBegin}
+              onEnd={onEnd}
+            />
+          </div>
+          <div className="layer-actions">
+            <button
+              type="button"
+              onClick={() =>
+                onUpdate(selected.id, { flipped: !selected.flipped })
+              }
+            >
+              <FiRepeat /> Flip
+            </button>
+            <button
+              type="button"
+              disabled={full}
+              onClick={() => onDuplicate(selected.id)}
+            >
+              <FiCopy /> Duplicate
+            </button>
+            <button
+              type="button"
+              disabled={stickers[0]?.id === selected.id}
+              onClick={() => onLayer(selected.id, -1)}
+            >
+              <FiChevronDown /> Back
+            </button>
+            <button
+              type="button"
+              disabled={stickers.at(-1)?.id === selected.id}
+              onClick={() => onLayer(selected.id, 1)}
+            >
+              <FiChevronUp /> Front
+            </button>
+          </div>
+          <p className="editor-hint">
+            Arrow keys nudge a selected sticker. Shift moves it further; Delete
+            removes it.
+          </p>
+        </div>
+      )}
       <div className="tool-section-title">
         <h3>A little extra personality</h3>
         <span>
@@ -180,101 +275,6 @@ export default function StickerPanel({
               <img src={sticker.src} alt="" draggable={false} />
             </button>
           ))}
-        </div>
-      )}
-      {selected && (
-        <div
-          className="selected-sticker-tools"
-          aria-label="Selected sticker controls"
-        >
-          <div className="tool-section-title">
-            <h3>{selected.name}</h3>
-            <button
-              type="button"
-              className="small-icon-button"
-              aria-label="Delete selected sticker"
-              onClick={() => onRemove(selected.id)}
-            >
-              <FiTrash2 />
-            </button>
-          </div>
-          <RangeField
-            label="Sticker size"
-            min={8}
-            max={80}
-            value={selected.size * 100}
-            suffix="%"
-            onChange={(value) => onUpdate(selected.id, { size: value / 100 })}
-            onBegin={onBegin}
-            onEnd={onEnd}
-          />
-          <RangeField
-            label="Sticker rotation"
-            min={-180}
-            max={180}
-            value={selected.rotation}
-            suffix="°"
-            onChange={(value) => onUpdate(selected.id, { rotation: value })}
-            onBegin={onBegin}
-            onEnd={onEnd}
-          />
-          <div className="range-pair">
-            <RangeField
-              label="Horizontal position"
-              min={0}
-              max={100}
-              value={selected.x * 100}
-              suffix="%"
-              onChange={(value) => onUpdate(selected.id, { x: value / 100 })}
-              onBegin={onBegin}
-              onEnd={onEnd}
-            />
-            <RangeField
-              label="Vertical position"
-              min={0}
-              max={100}
-              value={selected.y * 100}
-              suffix="%"
-              onChange={(value) => onUpdate(selected.id, { y: value / 100 })}
-              onBegin={onBegin}
-              onEnd={onEnd}
-            />
-          </div>
-          <div className="layer-actions">
-            <button
-              type="button"
-              onClick={() =>
-                onUpdate(selected.id, { flipped: !selected.flipped })
-              }
-            >
-              <FiRepeat /> Flip
-            </button>
-            <button
-              type="button"
-              disabled={full}
-              onClick={() => onDuplicate(selected.id)}
-            >
-              <FiCopy /> Duplicate
-            </button>
-            <button
-              type="button"
-              disabled={stickers[0]?.id === selected.id}
-              onClick={() => onLayer(selected.id, -1)}
-            >
-              <FiChevronDown /> Back
-            </button>
-            <button
-              type="button"
-              disabled={stickers.at(-1)?.id === selected.id}
-              onClick={() => onLayer(selected.id, 1)}
-            >
-              <FiChevronUp /> Front
-            </button>
-          </div>
-          <p className="editor-hint">
-            Arrow keys nudge a selected sticker. Shift moves it further; Delete
-            removes it.
-          </p>
         </div>
       )}
     </section>
