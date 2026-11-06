@@ -1,68 +1,125 @@
-// app/components/PhotostripPreview.tsx
 "use client";
 
-import { forwardRef } from "react";
-import { LayoutInfo } from "@/lib/layout";
-import { FaCamera } from "react-icons/fa";
+import { forwardRef, type CSSProperties } from "react";
+import { FiCamera } from "react-icons/fi";
+import {
+  getCells,
+  getCellStyle,
+  getGridStyle,
+  getLayoutAspect,
+  type LayoutInfo,
+} from "@/lib/layout";
+import type { PhotoSlots } from "@/lib/photobooth-session";
+import type { EditorDesign, PlacedSticker } from "@/lib/editor-design";
+import { captionFont } from "@/lib/editor-design";
+import { frameStyles } from "@/lib/frames";
+import { patternSvg, decorationSvg, svgUrl } from "@/lib/frame-art";
+import { effectsCss } from "@/lib/photo-filters";
+import StickerLayer from "./StickerLayer";
 
-interface PhotostripPreviewProps {
+interface Props {
   layout: LayoutInfo;
-  images: (string | null)[];
-  borderColor?: string;
-  borderStyle?: string;
-  clipPathStyle?: string;
-  className?: string;
+  images: PhotoSlots;
+  design: EditorDesign;
+  selected: string | null;
+  onSelect: (id: string | null) => void;
+  onUpdateSticker: (id: string, patch: Partial<PlacedSticker>) => void;
+  onRemoveSticker: (id: string) => void;
+  onBegin: () => void;
+  onEnd: () => void;
 }
-
-const PhotostripPreview = forwardRef<HTMLDivElement, PhotostripPreviewProps>(
-  ({ layout, images, borderColor, borderStyle, clipPathStyle, className }, ref) => {
-    const totalSlots = layout.rows * layout.cols;
-
+const PhotostripPreview = forwardRef<HTMLDivElement, Props>(
+  (
+    {
+      layout,
+      images,
+      design,
+      selected,
+      onSelect,
+      onUpdateSticker,
+      onRemoveSticker,
+      onBegin,
+      onEnd,
+    },
+    ref,
+  ) => {
+    const narrow = getLayoutAspect(layout) < 0.6;
+    const background = patternSvg(design.pattern, design.patternColor);
+    const decoration = decorationSvg(design.frame, design.patternColor);
+    const style = {
+      backgroundColor: design.borderColor,
+      backgroundImage: background ? `url("${svgUrl(background)}")` : undefined,
+      width: Math.max(100, Math.min(340, 440 * getLayoutAspect(layout))),
+      maxWidth: "100%",
+      "--frame-space": `${narrow ? design.padding / 2 : design.padding}px`,
+      "--photo-gap": `${design.gap}px`,
+    } as CSSProperties;
     return (
       <div
         ref={ref}
-        className={`
-          relative overflow-hidden shadow-lg
-          inline-block
-          w-full max-w-sm
-          ${className ?? ""}
-          ${borderStyle ?? ""}
-        `}
-        style={{
-          backgroundColor: borderColor,
-          clipPath: clipPathStyle,
-          // ✅ aspectRatio pindah ke kontainer yang di-capture
-          aspectRatio: `${layout.cols} / ${layout.rows}`,
+        className={`photostrip ${frameStyles[design.frame]}`}
+        style={style}
+        data-testid="photostrip"
+        onPointerDown={(event) => {
+          if (!(event.target as HTMLElement).closest("[data-sticker-id]"))
+            onSelect(null);
         }}
       >
-        <div
-          className="grid h-full w-full gap-x-2 gap-y-4"
-          style={{
-            gridTemplateRows: `repeat(${layout.rows}, 1fr)`,
-            gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
-          }}
-        >
-          {Array.from({ length: totalSlots }).map((_, i) => (
+        {decoration && (
+          <img
+            className="frame-decoration"
+            src={svgUrl(decoration)}
+            alt=""
+            draggable={false}
+          />
+        )}
+        <div className="photostrip-grid" style={getGridStyle(layout)}>
+          {getCells(layout).map((cell, index) => (
             <div
-              key={i}
-              className="bg-gray-300 overflow-hidden flex justify-center items-center"
+              key={index}
+              data-photo-slot={index}
+              className={`photostrip-cell photo-shape-${design.photoShape}`}
+              style={getCellStyle(cell)}
             >
-              {images[i] ? (
+              {images[index] ? (
                 <img
-                  src={images[i] as string}
-                  className="w-full h-full object-cover"
-                  alt={`slot ${i + 1}`}
+                  src={images[index]!}
+                  alt={`slot ${index + 1}`}
+                  draggable={false}
+                  style={{ filter: effectsCss(design.effects) }}
                 />
               ) : (
-                <FaCamera className="text-gray-400 text-2xl" />
+                <FiCamera aria-label="Empty photo space" />
               )}
             </div>
           ))}
         </div>
+        {design.caption.text && (
+          <div
+            className="strip-caption"
+            data-caption
+            style={{
+              color: design.caption.color,
+              fontFamily: captionFont(design.caption.font),
+              fontSize: `min(${design.caption.size}px, ${100 / (Math.max(1, design.caption.text.length) * 0.85)}cqw)`,
+            }}
+          >
+            <span data-caption-text>{design.caption.text}</span>
+            <span data-caption-baseline className="caption-baseline" />
+          </div>
+        )}
+        <StickerLayer
+          stickers={design.stickers}
+          selected={selected}
+          onSelect={onSelect}
+          onUpdate={onUpdateSticker}
+          onRemove={onRemoveSticker}
+          onBegin={onBegin}
+          onEnd={onEnd}
+        />
       </div>
     );
-  }
+  },
 );
-
 PhotostripPreview.displayName = "PhotostripPreview";
 export default PhotostripPreview;

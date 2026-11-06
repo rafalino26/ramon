@@ -6,25 +6,31 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test tests/*.test.cjs",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "heic2any": "^0.0.4",
-    "html-to-image": "^1.11.13",
-    "html2canvas": "^1.4.1",
-    "next": "^15.5.7",
+    "next": "^15.5.29",
     "react": "^19.0.0",
-    "react-color": "^2.19.3",
     "react-dom": "^19.0.0",
     "react-icons": "^5.5.0",
     "react-webcam": "^7.2.0"
   },
+  "overrides": {
+    "postcss": "^8.5.32"
+  },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@playwright/test": "^1.56.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
-    "@types/react-color": "^3.0.13",
     "@types/react-dom": "^19",
+    "eslint": "^9.39.0",
+    "eslint-config-next": "^15.5.29",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

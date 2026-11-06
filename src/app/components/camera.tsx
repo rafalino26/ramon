@@ -1,403 +1,507 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState, useMemo } from 'react';
-import Webcam from 'react-webcam';
+import { useEffect, useRef, useState, useMemo } from "react";
+import Webcam from "react-webcam";
 import {
-  FaCamera,
-  FaCheckCircle,
-  FaRedo,
-  FaHourglassHalf,
-  FaSyncAlt,
-  FaTrash,
-} from 'react-icons/fa';
-import { layoutMap, LayoutInfo } from '@/lib/layout';
+  FiArrowRight,
+  FiCamera,
+  FiCheck,
+  FiClock,
+  FiMaximize2,
+  FiRefreshCw,
+  FiRepeat,
+} from "react-icons/fi";
+import { Flower, MiniScene } from "./MemoryArt";
+import { useMediaQuery } from "@/hooks/use-media-query";
+import {
+  getSlotCount,
+  getCells,
+  getCellStyle,
+  getGridStyle,
+  getLayoutAspect,
+  type LayoutInfo,
+} from "@/lib/layout";
+import type { PhotoSlots } from "@/lib/photobooth-session";
+import {
+  cameraFilters,
+  filterCss,
+  captureVideo,
+  type CameraFilter,
+} from "@/lib/camera";
+import PhotoSlotImage from "./PhotoSlotImage";
 
 interface CameraProps {
-  onCaptureComplete: (images: string[]) => void;
+  layout: LayoutInfo;
+  images: PhotoSlots;
+  onPhotoChange: (index: number, blob: Blob | null) => void;
+  onReset: () => void;
+  onCaptureComplete: () => void;
 }
 
-const flipImageHorizontally = (dataUrl: string): Promise<string> => {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      if (ctx) {
-        ctx.translate(canvas.width, 0);
-        ctx.scale(-1, 1);
-        ctx.drawImage(img, 0, 0);
-      }
-      resolve(canvas.toDataURL('image/png'));
-    };
-    img.src = dataUrl;
-  });
-};
-
-export default function Camera({ onCaptureComplete }: CameraProps) {
+export default function Camera({
+  layout,
+  images: capturedImages,
+  onPhotoChange,
+  onReset,
+  onCaptureComplete,
+}: CameraProps) {
   const webcamRef = useRef<Webcam>(null);
-
-  const [photoToDelete, setPhotoToDelete] = useState<number | null>(null);
-  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
-  const [timer, setTimer] = useState<number>(0);
-  const [filter, setFilter] = useState('normal');
-
-  const [layout, setLayout] = useState<LayoutInfo>(
-    layoutMap['2x2'] || { id: 'default', label: 'Default', rows: 1, cols: 1 }
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const portrait = useMediaQuery(
+    "(max-width: 639px) and (orientation: portrait)",
   );
-
-  const [capturedImages, setCapturedImages] = useState<(string | null)[]>([]);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [captureError, setCaptureError] = useState<string | null>(null);
+  const [cameraAttempt, setCameraAttempt] = useState(0);
+  const captureController = useRef<AbortController | null>(null);
+  const shutterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
+  const [timer, setTimer] = useState(0);
+  const [filter, setFilter] = useState<CameraFilter>("normal");
   const [isCapturing, setIsCapturing] = useState(false);
-  const [countdown, setCountdown] = useState<number>(0);
-
+  const [countdown, setCountdown] = useState(0);
   const [isWidescreen, setIsWidescreen] = useState(false);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [activeDeviceIndex, setActiveDeviceIndex] = useState(0);
-
-  // ✅ shutter state
+  const [activeDeviceIndex, setActiveDeviceIndex] = useState<number | null>(
+    null,
+  );
   const [shutterOn, setShutterOn] = useState(false);
-  const triggerShutter = () => {
-    setShutterOn(true);
-    setTimeout(() => setShutterOn(false), 110); // kedip cepat
-  };
+  const [cameraReady, setCameraReady] = useState(false);
 
-  const totalSlots = layout.rows * layout.cols;
+  const previewAspectRatio = isWidescreen ? 16 / 9 : portrait ? 3 / 4 : 4 / 3;
+
+  useEffect(() => {
+    captureController.current?.abort();
+    captureController.current = null;
+    setIsCapturing(false);
+    setCountdown(0);
+    setCameraReady(false);
+  }, [previewAspectRatio]);
+
+  const totalSlots = getSlotCount(layout);
   const capturedCount = capturedImages.filter(Boolean).length;
   const isComplete = capturedCount === totalSlots;
-
   const relevantCameras = useMemo(() => {
-    const term = facingMode === 'user' ? 'front' : 'back';
+    const pattern =
+      facingMode === "user" ? /front|user|facetime/i : /back|rear|environment/i;
     return devices.filter(
-      (d) => d.kind === 'videoinput' && d.label.toLowerCase().includes(term)
+      (device) => device.kind === "videoinput" && pattern.test(device.label),
     );
   }, [devices, facingMode]);
 
   useEffect(() => {
-    const getDevices = async () => {
+    let active = true;
+    const refresh = async () => {
       try {
-        await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        const mediaDevices = await navigator.mediaDevices.enumerateDevices();
-        setDevices(mediaDevices);
-      } catch (err) {
-        console.error('Error getting devices:', err);
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        if (active)
+          setDevices((previous) =>
+            previous.length === devices.length &&
+            previous.every(
+              (device, index) =>
+                device.deviceId === devices[index].deviceId &&
+                device.label === devices[index].label,
+            )
+              ? previous
+              : devices,
+          );
+      } catch {
+        // Labels/lens switching are optional; Webcam still owns the actual stream.
       }
     };
-    getDevices();
-  }, []);
+    void refresh();
+    navigator.mediaDevices?.addEventListener("devicechange", refresh);
+    return () => {
+      active = false;
+      navigator.mediaDevices?.removeEventListener("devicechange", refresh);
+    };
+  }, [cameraReady]);
 
-  useEffect(() => {
-    setActiveDeviceIndex(0);
-  }, [facingMode]);
+  useEffect(
+    () => () => {
+      captureController.current?.abort();
+      if (shutterTimer.current) clearTimeout(shutterTimer.current);
+    },
+    [],
+  );
 
-  useEffect(() => {
-    const savedLayoutId = localStorage.getItem('selectedLayout');
-    const newLayout =
-      savedLayoutId && layoutMap[savedLayoutId as keyof typeof layoutMap]
-        ? layoutMap[savedLayoutId as keyof typeof layoutMap]
-        : layoutMap['2x2'] || { id: 'default', label: 'Default', rows: 1, cols: 1 };
+  const videoConstraints = useMemo(
+    () => ({
+      width: { ideal: previewAspectRatio < 1 ? 1440 : 1920 },
+      height: { ideal: previewAspectRatio < 1 ? 1920 : 1080 },
+      aspectRatio: { ideal: previewAspectRatio },
+      ...(activeDeviceIndex !== null &&
+      relevantCameras[activeDeviceIndex]?.deviceId
+        ? { deviceId: { exact: relevantCameras[activeDeviceIndex].deviceId } }
+        : { facingMode: { ideal: facingMode } }),
+    }),
+    [previewAspectRatio, facingMode, relevantCameras, activeDeviceIndex],
+  );
 
-    setLayout(newLayout);
-    setCapturedImages(Array(newLayout.rows * newLayout.cols).fill(null));
-  }, []);
-
-  const videoConstraints = {
-    width: { ideal: 1920, min: 1280 },
-    height: { ideal: 1080, min: 720 },
-    aspectRatio: isWidescreen ? 16 / 9 : 4 / 3,
-    facingMode: facingMode,
-    deviceId: relevantCameras[activeDeviceIndex]?.deviceId,
+  const cancelCapture = () => {
+    captureController.current?.abort();
+    captureController.current = null;
+    setIsCapturing(false);
+    setCountdown(0);
   };
-
+  const switchCamera = () => {
+    cancelCapture();
+    setCameraReady(false);
+    setActiveDeviceIndex(null);
+    setFacingMode((mode) => (mode === "user" ? "environment" : "user"));
+  };
   const cycleNextCamera = () => {
     if (relevantCameras.length > 1) {
-      setActiveDeviceIndex((prevIndex) => (prevIndex + 1) % relevantCameras.length);
+      cancelCapture();
+      setCameraReady(false);
+      const currentId = webcamRef.current?.stream
+        ?.getVideoTracks()[0]
+        ?.getSettings().deviceId;
+      const currentIndex = relevantCameras.findIndex(
+        (device) => device.deviceId === currentId,
+      );
+      setActiveDeviceIndex(
+        (Math.max(0, currentIndex) + 1) % relevantCameras.length,
+      );
     }
   };
-
-  const applyFilterStyle = (f: string) => {
-    switch (f) {
-      case 'b&w':
-        return 'grayscale(100%)';
-      case 'vintage':
-        return 'sepia(50%)';
-      case 'vivid':
-        return 'saturate(200%)';
-      case 'cool':
-        return 'contrast(120%) brightness(110%)';
-      case 'warm':
-        return 'brightness(120%) saturate(120%)';
-      default:
-        return 'none';
-    }
-  };
-
   const handleCapture = async () => {
-    if (isCapturing || isComplete || !webcamRef.current) return;
-
-    const performCapture = async () => {
-      // ✅ kedip saat jepret
-      triggerShutter();
-
-      let imageSrc = webcamRef.current?.getScreenshot();
-      if (imageSrc) {
-        if (facingMode === 'user') {
-          imageSrc = await flipImageHorizontally(imageSrc);
-        }
-
-        const firstEmptyIndex = capturedImages.findIndex((img) => img === null);
-        if (firstEmptyIndex !== -1) {
-          const newImages = [...capturedImages];
-          newImages[firstEmptyIndex] = imageSrc;
-          setCapturedImages(newImages);
-        }
+    const index = capturedImages.findIndex((image) => image === null);
+    if (captureController.current || index < 0 || !cameraReady) return;
+    const controller = new AbortController();
+    captureController.current = controller;
+    setIsCapturing(true);
+    setCaptureError(null);
+    try {
+      for (let remaining = timer; remaining > 0; remaining--) {
+        controller.signal.throwIfAborted();
+        setCountdown(remaining);
+        await new Promise<void>((resolve, reject) => {
+          const onAbort = () => {
+            clearTimeout(timeout);
+            reject(new DOMException("Capture canceled", "AbortError"));
+          };
+          const timeout = setTimeout(() => {
+            controller.signal.removeEventListener("abort", onAbort);
+            resolve();
+          }, 1000);
+          controller.signal.addEventListener("abort", onAbort, { once: true });
+        });
       }
-      setIsCapturing(false);
-    };
-
-    if (timer > 0) {
-      setIsCapturing(true);
-      setCountdown(timer);
-      const timerId = setInterval(() => setCountdown((prev) => prev - 1), 1000);
-
-      setTimeout(() => {
-        clearInterval(timerId);
+      controller.signal.throwIfAborted();
+      setCountdown(0);
+      const video = webcamRef.current?.video;
+      if (!video) throw new Error("The camera is not ready yet.");
+      setShutterOn(true);
+      if (shutterTimer.current) clearTimeout(shutterTimer.current);
+      shutterTimer.current = setTimeout(() => setShutterOn(false), 110);
+      const box = viewportRef.current?.getBoundingClientRect();
+      const visibleRatio =
+        box && box.height > 0 ? box.width / box.height : previewAspectRatio;
+      const blob = await captureVideo(
+        video,
+        facingMode === "user",
+        filter,
+        visibleRatio,
+      );
+      if (!controller.signal.aborted) onPhotoChange(index, blob);
+    } catch (error) {
+      if (!controller.signal.aborted)
+        setCaptureError(
+          error instanceof Error
+            ? error.message
+            : "We couldn’t take that photo. Please try again.",
+        );
+    } finally {
+      if (captureController.current === controller) {
+        captureController.current = null;
+        setIsCapturing(false);
         setCountdown(0);
-        performCapture();
-      }, timer * 1000);
-    } else {
-      await performCapture();
+      }
     }
   };
-
   const handleReset = () => {
-    setCapturedImages(Array(totalSlots).fill(null));
-    setFacingMode('user');
+    cancelCapture();
+    if (facingMode !== "user" || isWidescreen || activeDeviceIndex !== null)
+      setCameraReady(false);
+    onReset();
+    setFacingMode("user");
+    setActiveDeviceIndex(null);
     setTimer(0);
-    setFilter('normal');
+    setFilter("normal");
     setIsWidescreen(false);
-    setPhotoToDelete(null);
-    setCountdown(0);
-    setIsCapturing(false);
   };
-
-  const handleSelectPhotoForDeletion = (index: number) => {
-    if (photoToDelete === index) setPhotoToDelete(null);
-    else setPhotoToDelete(index);
-  };
-
-  const handleDeletePhoto = (indexToDelete: number) => {
-    const newImages = [...capturedImages];
-    newImages[indexToDelete] = null;
-    setCapturedImages(newImages);
-    setPhotoToDelete(null);
-  };
-
-  const handleContinueToEdit = () => {
-    const finalImages = capturedImages.filter(Boolean) as string[];
-    onCaptureComplete(finalImages);
+  const handleDeletePhoto = (index: number) => {
+    cancelCapture();
+    onPhotoChange(index, null);
   };
 
   return (
-    <div className="flex flex-col space-y-4">
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-        <div className="flex gap-2">
-          <button
-            onClick={() => setFacingMode((f) => (f === 'user' ? 'environment' : 'user'))}
-            className="px-3 py-2 bg-purple-100 text-purple-600 rounded-lg text-sm"
-            type="button"
-          >
-            Switch Cam
-          </button>
-
-          {relevantCameras.length > 1 && (
-            <button
-              onClick={cycleNextCamera}
-              className="px-3 py-2 bg-purple-100 text-purple-600 rounded-lg text-sm flex items-center gap-1 animate-fade-in"
-              type="button"
-            >
-              <FaSyncAlt /> Lens
-            </button>
-          )}
-
-          <button
-            onClick={() => setIsWidescreen((w) => !w)}
-            className="px-3 py-2 bg-purple-100 text-purple-600 rounded-lg text-sm"
-            type="button"
-          >
-            {isWidescreen ? 'Normal AR' : 'Wide AR'}
-          </button>
-        </div>
-
-        <div className="flex space-x-2">
-          <span className="self-center text-sm mr-2 text-purple-700">Timer:</span>
-          {[0, 3, 5, 10].map((t) => (
-            <button
-              key={t}
-              onClick={() => setTimer(t)}
-              className={`w-10 h-10 rounded-full text-sm font-semibold ${
-                timer === t ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-500'
-              }`}
-              type="button"
-            >
-              {t === 0 ? 'Off' : `${t}s`}
-            </button>
-          ))}
-        </div>
+    <div>
+      <div className="panel-heading">
+        <span className="panel-kicker">A GOOD DAY TO MAKE A MEMORY</span>
+        <h2>Find your light. Be yourself.</h2>
+        <p>
+          A favourite filter, a little countdown, and your best wonderfully
+          imperfect pose.
+        </p>
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-        <div className="flex flex-col items-center gap-4 w-full">
-          <div className="relative w-full aspect-[4/3] bg-gray-900 rounded-lg overflow-hidden shadow-lg">
-            <Webcam
-              ref={webcamRef}
-              audio={false}
-              screenshotFormat="image/png"
-              screenshotQuality={1}
-              forceScreenshotSourceSize={true}
-              videoConstraints={videoConstraints}
-              className="w-full h-full object-cover"
-              style={{
-                filter: applyFilterStyle(filter),
-                transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
-              }}
-            />
-
-            {/* ✅ shutter overlay */}
-            <div
-              className={`absolute inset-0 z-40 pointer-events-none transition-opacity duration-75 ${
-                shutterOn ? 'opacity-100' : 'opacity-0'
-              } bg-black`}
-            />
-
-            {isCapturing && countdown > 0 && (
-              <div className="absolute inset-0 flex justify-center items-center z-30">
-                <span className="text-white text-9xl font-bold drop-shadow-lg [text-shadow:0px_4px_8px_rgba(0,0,0,0.7)]">
-                  {countdown}
-                </span>
-              </div>
-            )}
-
-            <div
-              className="absolute inset-0 pointer-events-none"
-              style={{
-                boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.5)',
-                width: '95%',
-                height: '95%',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                aspectRatio: `${layout.cols} / ${layout.rows}`,
-              }}
-            />
-          </div>
-
-          <div className="flex justify-center items-center gap-4 pt-2">
-            <button
-              onClick={handleReset}
-              className="flex items-center gap-2 px-5 py-3 bg-gray-200 text-gray-700 rounded-full shadow-md font-semibold"
-              type="button"
-            >
-              <FaRedo /> Reset
-            </button>
-
-            <button
-              onClick={handleCapture}
-              disabled={isComplete || isCapturing}
-              className="flex items-center gap-2 px-8 py-4 bg-purple-600 text-white rounded-full shadow-lg font-bold text-lg disabled:bg-purple-300 disabled:cursor-not-allowed"
-              type="button"
-            >
-              {isCapturing ? <FaHourglassHalf className="animate-spin" /> : <FaCamera />}
-              Capture ({capturedCount}/{totalSlots})
-            </button>
-          </div>
-
-          <div className="w-full pt-6">
-            <div className="flex space-x-4 justify-center overflow-x-auto pb-2">
-              {[
-                { label: 'Normal', value: 'normal' },
-                { label: 'B&W', value: 'b&w' },
-                { label: 'Vintage', value: 'vintage' },
-                { label: 'Vivid', value: 'vivid' },
-                { label: 'Cool', value: 'cool' },
-                { label: 'Warm', value: 'warm' },
-              ].map((f) => (
-                <div
-                  key={f.value}
-                  onClick={() => setFilter(f.value)}
-                  className={`flex-shrink-0 flex flex-col items-center p-2 rounded-xl cursor-pointer w-24 ${
-                    filter === f.value ? 'bg-purple-200' : 'bg-purple-50'
-                  }`}
+      {captureError && (
+        <p className="notice-error" role="alert">
+          {captureError}
+        </p>
+      )}
+      <div className="camera-workspace">
+        <div className="camera-column">
+          <div className="camera-toolbar">
+            <div className="camera-tools">
+              <button
+                type="button"
+                className="camera-tool"
+                onClick={switchCamera}
+                aria-label="Switch camera"
+                title="Switch camera"
+              >
+                <FiRepeat />
+                <span>Flip</span>
+              </button>
+              {relevantCameras.length > 1 && (
+                <button
+                  type="button"
+                  className="camera-tool"
+                  onClick={cycleNextCamera}
+                  aria-label="Switch lens"
                 >
-                  <div className="w-full h-16 rounded-md mb-2 bg-gray-300" style={{ filter: applyFilterStyle(f.value) }} />
-                  <span className={`text-xs font-medium ${filter === f.value ? 'text-purple-700' : 'text-purple-500'}`}>
-                    {f.label}
-                  </span>
-                </div>
+                  <FiRefreshCw />
+                  <span>Lens</span>
+                </button>
+              )}
+              <button
+                type="button"
+                className="camera-tool"
+                onClick={() => {
+                  cancelCapture();
+                  setIsWidescreen((wide) => !wide);
+                }}
+                aria-label={isWidescreen ? "Auto view" : "Wide view"}
+                title={
+                  isWidescreen
+                    ? "Use the view for your screen"
+                    : "Use a wider view"
+                }
+              >
+                <FiMaximize2 />
+                <span>{isWidescreen ? "Auto view" : "Wide view"}</span>
+              </button>
+            </div>
+            <div className="timer-tools" aria-label="Photo timer">
+              <FiClock aria-hidden="true" />
+              {[0, 3, 5, 10].map((seconds) => (
+                <button
+                  key={seconds}
+                  type="button"
+                  aria-label={seconds === 0 ? "Timer off" : `${seconds}s`}
+                  aria-pressed={timer === seconds}
+                  onClick={() => setTimer(seconds)}
+                >
+                  {seconds === 0 ? "Off" : `${seconds}s`}
+                </button>
               ))}
             </div>
+            <select
+              className="landscape-filter-select"
+              aria-label="Camera filter"
+              value={filter}
+              onChange={(event) => {
+                const selected = cameraFilters.find(
+                  (item) => item.value === event.target.value,
+                );
+                if (selected) setFilter(selected.value);
+              }}
+            >
+              {cameraFilters.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div
+            ref={viewportRef}
+            className="camera-viewport"
+            data-view={
+              isWidescreen ? "wide" : portrait ? "portrait" : "standard"
+            }
+            style={{ aspectRatio: previewAspectRatio }}
+            aria-label="Camera preview"
+          >
+            <Webcam
+              key={cameraAttempt}
+              ref={webcamRef}
+              audio={false}
+              playsInline
+              videoConstraints={videoConstraints}
+              onLoadedData={() => {
+                setCameraReady(true);
+                setCameraError(null);
+              }}
+              onUserMediaError={() => {
+                setCameraReady(false);
+                cancelCapture();
+                setCameraError(
+                  "Check your camera permissions, or try uploading a photo instead.",
+                );
+              }}
+              style={{
+                filter: filterCss(filter),
+                transform: facingMode === "user" ? "scaleX(-1)" : "none",
+              }}
+            />
+            {!cameraReady && !cameraError && (
+              <div className="camera-placeholder" role="status">
+                <Flower />
+                <p>
+                  Finding your good side…
+                  <br />
+                  Allow camera access to get started.
+                </p>
+              </div>
+            )}
+            {cameraError && (
+              <div className="camera-placeholder camera-error" role="alert">
+                <FiCamera />
+                <h3>Your camera needs a little help.</h3>
+                <p>{cameraError}</p>
+                <button
+                  type="button"
+                  className="button button-primary"
+                  onClick={() => {
+                    setCameraError(null);
+                    setCameraAttempt((attempt) => attempt + 1);
+                  }}
+                >
+                  Try again
+                </button>
+              </div>
+            )}
+            {cameraReady && (
+              <>
+                <span className="camera-status">
+                  <span className="live-dot" />{" "}
+                  {facingMode === "user" ? "Front camera" : "Back camera"}
+                </span>
+                {["tl", "tr", "bl", "br"].map((corner) => (
+                  <span
+                    key={corner}
+                    className={`camera-corner corner-${corner}`}
+                  />
+                ))}
+              </>
+            )}
+            <div className={`shutter-overlay ${shutterOn ? "is-on" : ""}`} />
+            {isCapturing && countdown > 0 && (
+              <div
+                className="capture-countdown"
+                role="status"
+                aria-label={`Taking photo in ${countdown}`}
+              >
+                {countdown}
+              </div>
+            )}
+          </div>
+          <div className="capture-actions">
+            <button
+              type="button"
+              className="reset-button"
+              onClick={handleReset}
+            >
+              <FiRefreshCw /> Reset
+            </button>
+            <button
+              type="button"
+              className="capture-button"
+              onClick={handleCapture}
+              disabled={isComplete || isCapturing || !cameraReady}
+              aria-label={`Capture (${capturedCount}/${totalSlots})`}
+            >
+              <FiCamera />
+            </button>
+            <p>
+              {isComplete
+                ? "Looking lovely!"
+                : `${capturedCount} of ${totalSlots} moments`}
+            </p>
+          </div>
+          <div className="camera-filters" aria-label="Camera filters">
+            {cameraFilters.map((item, index) => (
+              <button
+                type="button"
+                key={item.value}
+                className="filter-option"
+                aria-label={item.label}
+                aria-pressed={filter === item.value}
+                onClick={() => setFilter(item.value)}
+              >
+                <span style={{ filter: item.css }}>
+                  <MiniScene variant={index % 3} />
+                </span>
+                <span>{item.label}</span>
+              </button>
+            ))}
           </div>
         </div>
-
-        <div className="w-full p-2 bg-gray-100 rounded-lg" style={{ aspectRatio: `${layout.cols} / ${layout.rows}` }}>
+        <aside className="camera-roll">
+          <div className="camera-roll-header">
+            <h3>Your moments</h3>
+            <span>
+              {capturedCount}/{totalSlots}
+            </span>
+          </div>
           <div
-            className="grid h-full w-full gap-2"
+            className="photo-grid"
             style={{
-              gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
-              gridTemplateRows: `repeat(${layout.rows}, 1fr)`,
+              ...getGridStyle(layout),
+              maxWidth: Math.max(
+                90,
+                Math.min(210, 380 * getLayoutAspect(layout)),
+              ),
+              marginInline: "auto",
             }}
           >
-            {Array.from({ length: totalSlots }).map((_, i) => (
+            {capturedImages.map((image, index) => (
               <div
-                key={i}
-                onClick={() => capturedImages[i] && handleSelectPhotoForDeletion(i)}
-                className="bg-gray-300 rounded-md overflow-hidden flex justify-center items-center relative cursor-pointer"
+                key={index}
+                className="photo-cell"
+                style={getCellStyle(getCells(layout)[index])}
               >
-                {capturedImages[i] ? (
-                  <>
-                    <img
-                      src={capturedImages[i] as string}
-                      className={`w-full h-full object-cover transition-all duration-300 ${
-                        photoToDelete === i ? 'brightness-50' : ''
-                      }`}
-                      alt={`Capture ${i + 1}`}
-                    />
-                    <div
-                      className={`absolute inset-0 flex justify-center items-center transition-opacity duration-300 ${
-                        photoToDelete === i ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                      }`}
-                    >
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeletePhoto(i);
-                        }}
-                        className="text-white text-4xl p-3 bg-black/40 rounded-full hover:bg-red-500/80 transform hover:scale-110 transition-all duration-200"
-                        aria-label="Delete photo"
-                        type="button"
-                      >
-                        <FaTrash />
-                      </button>
-                    </div>
-                  </>
+                {image ? (
+                  <PhotoSlotImage
+                    source={image}
+                    alt={`Capture ${index + 1}`}
+                    onDelete={() => handleDeletePhoto(index)}
+                  />
                 ) : (
-                  <FaCamera className="text-gray-400 text-2xl" />
+                  <span className="empty-capture">{index + 1}</span>
                 )}
               </div>
             ))}
           </div>
-        </div>
+          <p>
+            A little collection of you.
+            <br />
+            Not quite right? Remove it and try again.
+          </p>
+          {isComplete && (
+            <button
+              type="button"
+              className="button button-primary"
+              onClick={onCaptureComplete}
+            >
+              <FiCheck /> Make it yours <FiArrowRight />
+            </button>
+          )}
+        </aside>
       </div>
-
-      {isComplete && (
-        <button
-          onClick={handleContinueToEdit}
-          className="flex items-center mx-auto gap-2 px-8 py-3 rounded-lg text-white font-semibold shadow-lg transition bg-purple-500 hover:bg-purple-600 animate-pulse mt-4"
-          type="button"
-        >
-          <FaCheckCircle /> Continue to Editor
-        </button>
-      )}
     </div>
   );
 }

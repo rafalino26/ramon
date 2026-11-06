@@ -1,0 +1,2 @@
+Geist-Latin.woff2 https://fonts.gstatic.com/s/geist/v5/gyByhwUxId8gMEwcGFU.woff2
+Coiny-Latin.woff2 https://fonts.gstatic.com/s/coiny/v17/gyByhwU1K989PUwcGFU.woff2

@@ -1,455 +1,328 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { SketchPicker, ColorResult } from "react-color";
-import { FaBorderAll, FaPalette, FaDownload, FaImages } from "react-icons/fa";
-import { layoutMap, LayoutInfo } from "@/lib/layout";
+import { useEffect, useRef, useState, type Dispatch } from "react";
+import {
+  FiArrowRight,
+  FiCheck,
+  FiDownload,
+  FiGrid,
+  FiDroplet,
+  FiSmile,
+  FiSliders,
+  FiType,
+  FiRotateCcw,
+  FiRotateCw,
+  FiRefreshCw,
+} from "react-icons/fi";
+import type {
+  PhotoboothSession,
+  SessionAction,
+} from "@/lib/photobooth-session";
+import {
+  createDesign,
+  normalizeSticker,
+  addSticker,
+  MAX_STICKERS,
+  type EditorDesign,
+  type PlacedSticker,
+} from "@/lib/editor-design";
+import type { StickerAsset } from "@/lib/stickers";
+import { usePreparedExport } from "@/hooks/use-prepared-export";
 import PhotostripPreview from "./photostrip";
+import { Flower } from "./MemoryArt";
+import StickerPanel from "./editor/StickerPanel";
+import {
+  FramePanel,
+  ColorPanel,
+  FilterPanel,
+  TextPanel,
+} from "./editor/StylePanels";
 
-interface EditProps {
-  images: string[];
+interface Props {
+  session: PhotoboothSession;
+  dispatch: Dispatch<SessionAction>;
+  createStickerSource: (blob: Blob) => string;
+  onChooseLayout: () => void;
 }
+const tabs = [
+  { id: "frame", label: "Frame", icon: FiGrid },
+  { id: "color", label: "Color", icon: FiDroplet },
+  { id: "filters", label: "Filters", icon: FiSliders },
+  { id: "stickers", label: "Stickers", icon: FiSmile },
+  { id: "text", label: "Text", icon: FiType },
+] as const;
+type Panel = (typeof tabs)[number]["id"];
 
-type FramePreset = "thin" | "rounded" | "polaroid" | "circle";
-
-export default function Edit({ images }: EditProps) {
-  const [layout, setLayout] = useState<LayoutInfo>({
-    id: "default",
-    label: "Default",
-    rows: 1,
-    cols: 1,
-  });
-
-  const [activePanel, setActivePanel] = useState<"border" | "color">("border");
-  const [borderColor, setBorderColor] = useState("#ffffff");
-
-  // preview style (untuk UI)
-  const [frameStyle, setFrameStyle] = useState("rounded-lg p-4");
-  const [clipPathStyle, setClipPathStyle] = useState("");
-
-  // export preset (untuk canvas)
-  const [framePreset, setFramePreset] = useState<FramePreset>("rounded");
-
-  const photostripRef = useRef<HTMLDivElement>(null);
-
+export default function Edit({
+  session,
+  dispatch,
+  createStickerSource,
+  onChooseLayout,
+}: Props) {
+  const { layout, images, design } = session;
+  const [panel, setPanel] = useState<Panel>("frame");
+  const [selected, setSelected] = useState<string | null>(null);
+  const preview = useRef<HTMLDivElement>(null);
+  const { ready, isSaving, error, download, retry } = usePreparedExport(
+    preview,
+    images,
+    design,
+  );
+  const change = (patch: Partial<EditorDesign>) =>
+    dispatch({ type: "design", patch });
+  const begin = () => dispatch({ type: "design-begin" });
+  const end = () => dispatch({ type: "design-end" });
   useEffect(() => {
-    const savedLayoutId = localStorage.getItem("selectedLayout");
-    if (savedLayoutId && layoutMap[savedLayoutId as keyof typeof layoutMap]) {
-      setLayout(layoutMap[savedLayoutId as keyof typeof layoutMap]);
-    }
-  }, []);
-
-  const isIOS = () => {
-    if (typeof window === "undefined") return false;
-    return (
-      /iPad|iPhone|iPod/.test(navigator.userAgent) &&
-      !(window as any).MSStream
-    );
-  };
-
-  const handleFrameStyleChange = (style: string, preset: FramePreset) => {
-    setFrameStyle(style);
-    setFramePreset(preset);
-    setClipPathStyle("");
-  };
-
-  const handleClipPathChange = (clipPath: string) => {
-    setFrameStyle("");
-    setClipPathStyle(clipPath);
-  };
-
-  const handleColorChange = (color: ColorResult) => {
-    setBorderColor(color.hex);
-  };
-
-  const shareOrDownloadBlob = async (blob: Blob, filename: string) => {
-    // iOS: Share Sheet (Save Image)
-    if (isIOS() && "share" in navigator) {
-      try {
-        const file = new File([blob], filename, { type: blob.type });
-        const canShareFiles =
-          (navigator as any).canShare?.({ files: [file] }) ?? true;
-
-        if (canShareFiles) {
-          await (navigator as any).share({
-            files: [file],
-            title: "Ramon Photobooth",
-          });
-          return;
-        }
-      } catch (e) {
-        console.error("iOS share failed:", e);
+    if (selected && !design.stickers.some((sticker) => sticker.id === selected))
+      setSelected(null);
+  }, [design.stickers, selected]);
+  useEffect(() => {
+    if (selected)
+      preview.current
+        ?.querySelector<HTMLElement>(`[data-sticker-id="${selected}"]`)
+        ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [selected]);
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.matches(
+            "textarea,input:not([type=range]):not([type=color]),select",
+          ))
+      )
+        return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        dispatch({ type: event.shiftKey ? "redo" : "undo" });
       }
-    }
-
-    // default download
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1500);
-  };
-
-  // ✅ dataURL -> Blob -> ObjectURL -> Image (lebih stabil di iOS)
-  const loadImageSafe = async (src: string) => {
-    // Debug prefix biar kamu bisa cek di iOS console
-    console.log("export src prefix:", src.slice(0, 30));
-
-    const res = await fetch(src); // works for dataURL too
-    const blob = await res.blob();
-
-    const url = URL.createObjectURL(blob);
-    try {
-      const img = new Image();
-      img.decoding = "async";
-      // img.crossOrigin = "anonymous"; // kalau suatu saat pakai remote url
-      img.src = url;
-
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error("Image load failed"));
-      });
-
-      // decode (Safari kadang butuh)
-      // @ts-ignore
-      await img.decode?.().catch?.(() => {});
-
-      return img;
-    } finally {
-      // jangan revoke terlalu cepat sebelum drawImage (kita revoke setelah selesai draw)
-      // jadi revoke-nya dilakukan setelah draw, bukan di sini
-    }
-  };
-
-  const getExportMetrics = (preset: FramePreset) => {
-    // ✅ iOS: kecilkan canvas biar aman memory
-    // desktop/android boleh besar
-    const baseCell = isIOS() ? 420 : 640; // <--- penting
-    const gap = isIOS() ? 60 : 60;
-
-    let paddingTop = 56;
-    let paddingSide = 56;
-    let paddingBottom = 56;
-    let radius = 0; // ✅ frame luar selalu kotak
-
-    if (preset === "thin") {
-      paddingTop = paddingSide = paddingBottom = 28;
-      radius = 0;
-    }
-    if (preset === "rounded") {
-      paddingTop = paddingSide = paddingBottom = 64;
-      radius = 56;
-    }
-    if (preset === "polaroid") {
-      paddingTop = 56;
-      paddingSide = 56;
-      paddingBottom = isIOS() ? 150 : 200;
-      radius = 0;
-    }
-    if (preset === "circle") {
-      paddingTop = paddingSide = paddingBottom = 64;
-      radius = 9999;
-    }
-
-    const gridW = layout.cols * baseCell + (layout.cols - 1) * gap;
-    const gridH = layout.rows * baseCell + (layout.rows - 1) * gap;
-
-    const canvasW = gridW + paddingSide * 2;
-    const canvasH = gridH + paddingTop + paddingBottom;
-
-    return {
-      cell: baseCell,
-      gap,
-      paddingTop,
-      paddingSide,
-      paddingBottom,
-      radius,
-      canvasW,
-      canvasH,
+      if (event.key === "Escape") setSelected(null);
     };
-  };
-
-  const roundRectPath = (
-    ctx: CanvasRenderingContext2D,
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    r: number
-  ) => {
-    const rr = Math.min(r, w / 2, h / 2);
-    ctx.beginPath();
-    ctx.moveTo(x + rr, y);
-    ctx.arcTo(x + w, y, x + w, y + h, rr);
-    ctx.arcTo(x + w, y + h, x, y + h, rr);
-    ctx.arcTo(x, y + h, x, y, rr);
-    ctx.arcTo(x, y, x + w, y, rr);
-    ctx.closePath();
-  };
-
-  const exportWithCanvas = async (format: "png" | "jpeg") => {
-    const ext = format === "jpeg" ? "jpg" : "png";
-    const filename = `ramon-photobooth.${ext}`;
-
-    const m = getExportMetrics(framePreset);
-
-    const canvas = document.createElement("canvas");
-    canvas.width = m.canvasW;
-    canvas.height = m.canvasH;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Canvas not supported");
-
-    // background frame
-    ctx.save();
-    roundRectPath(ctx, 0, 0, m.canvasW, m.canvasH, m.radius);
-    ctx.clip();
-    ctx.fillStyle = borderColor;
-    ctx.fillRect(0, 0, m.canvasW, m.canvasH);
-    ctx.restore();
-
-    // load images one by one (biar 1 error gak ngebunuh semuanya)
-    const objectUrlsToRevoke: string[] = [];
-
-    for (let r = 0; r < layout.rows; r++) {
-      for (let c = 0; c < layout.cols; c++) {
-        const idx = r * layout.cols + c;
-        const src = images[idx];
-        if (!src) continue;
-
-        const x = m.paddingSide + c * (m.cell + m.gap);
-        const y = m.paddingTop + r * (m.cell + m.gap);
-
-        try {
-          // load via fetch->blob->objectURL
-          const res = await fetch(src);
-          const blob = await res.blob();
-          const url = URL.createObjectURL(blob);
-          objectUrlsToRevoke.push(url);
-
-          const img = new Image();
-          img.decoding = "async";
-          img.src = url;
-
-          await new Promise<void>((resolve, reject) => {
-            img.onload = () => resolve();
-            img.onerror = () => reject(new Error("Image load failed"));
-          });
-
-          // @ts-ignore
-          await img.decode?.().catch?.(() => {});
-
-          const iw = img.naturalWidth || img.width;
-          const ih = img.naturalHeight || img.height;
-
-          // object-fit: cover
-          const scale = Math.max(m.cell / iw, m.cell / ih);
-          const sw = m.cell / scale;
-          const sh = m.cell / scale;
-          const sx = (iw - sw) / 2;
-          const sy = (ih - sh) / 2;
-
-          const slotRadius = 0; // ✅ foto juga kotak
-
-          ctx.save();
-          if (slotRadius > 0) {
-            roundRectPath(ctx, x, y, m.cell, m.cell, slotRadius);
-            ctx.clip();
-          }
-          ctx.drawImage(img, sx, sy, sw, sh, x, y, m.cell, m.cell);
-          ctx.restore();
-        } catch (e) {
-          console.error("draw slot failed idx:", idx, e);
-          // draw placeholder (optional)
-          ctx.save();
-          ctx.fillStyle = "rgba(0,0,0,0.08)";
-          ctx.fillRect(x, y, m.cell, m.cell);
-          ctx.restore();
-        }
-      }
-    }
-
-    // revoke all objectURLs after drawing
-    objectUrlsToRevoke.forEach((u) => URL.revokeObjectURL(u));
-
-    const blob: Blob | null = await new Promise((resolve) => {
-      canvas.toBlob(
-        (b) => resolve(b),
-        format === "jpeg" ? "image/jpeg" : "image/png",
-        format === "jpeg" ? 0.92 : undefined
-      );
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
+  }, [dispatch]);
+  const updateSticker = (id: string, patch: Partial<PlacedSticker>) =>
+    change({
+      stickers: design.stickers.map((sticker) =>
+        sticker.id === id
+          ? normalizeSticker({ ...sticker, ...patch })
+          : sticker,
+      ),
     });
-
-    if (!blob) throw new Error("Failed to create blob");
-    await shareOrDownloadBlob(blob, filename);
+  const removeSticker = (id: string) => {
+    change({
+      stickers: design.stickers.filter((sticker) => sticker.id !== id),
+    });
+    if (selected === id) setSelected(null);
   };
-
-  const handleDownload = async (format: "png" | "jpeg") => {
-    try {
-      await exportWithCanvas(format);
-    } catch (e) {
-      console.error("Export failed:", e);
-      // fallback: open blank canvas (minimal)
-      try {
-        const m = getExportMetrics(framePreset);
-        const canvas = document.createElement("canvas");
-        canvas.width = m.canvasW;
-        canvas.height = m.canvasH;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        ctx.fillStyle = borderColor;
-        ctx.fillRect(0, 0, m.canvasW, m.canvasH);
-
-        const dataUrl =
-          format === "jpeg"
-            ? canvas.toDataURL("image/jpeg", 0.92)
-            : canvas.toDataURL("image/png");
-
-        const win = window.open();
-        if (win) {
-          win.document.write(
-            `<img src="${dataUrl}" style="max-width:100%;height:auto;" />`
-          );
-        }
-      } catch {}
-    }
+  const placeSticker = (asset: Pick<StickerAsset, "src" | "name">) => {
+    if (design.stickers.length >= MAX_STICKERS) return;
+    const sticker: PlacedSticker = {
+      id: crypto.randomUUID(),
+      src: asset.src,
+      name: asset.name,
+      x: 0.5 + ((design.stickers.length % 3) - 1) * 0.08,
+      y: 0.65,
+      size: 0.32,
+      rotation: 0,
+      flipped: false,
+    };
+    change({ stickers: addSticker(design, sticker) });
+    setSelected(sticker.id);
   };
+  const duplicateSticker = (id: string) => {
+    const original = design.stickers.find((sticker) => sticker.id === id);
+    if (!original || design.stickers.length >= MAX_STICKERS) return;
+    const sticker = normalizeSticker({
+      ...original,
+      id: crypto.randomUUID(),
+      x: original.x + 0.06,
+      y: original.y + 0.04,
+    });
+    change({ stickers: addSticker(design, sticker) });
+    setSelected(sticker.id);
+  };
+  const layerSticker = (id: string, direction: number) => {
+    const index = design.stickers.findIndex((sticker) => sticker.id === id),
+      target = index + direction;
+    if (index < 0 || target < 0 || target >= design.stickers.length) return;
+    const stickers = [...design.stickers];
+    [stickers[index], stickers[target]] = [stickers[target], stickers[index]];
+    change({ stickers });
+  };
+  const common = { design, onChange: change, onBegin: begin, onEnd: end };
 
-  if (images.length === 0) {
+  if (!images.some(Boolean))
     return (
-      <div className="text-center text-purple-500 p-8">
-        <h3 className="text-xl font-semibold">No Images to Edit</h3>
-        <p className="text-sm mt-2">
-          Please go back to capture or upload photos.
+      <div className="empty-editor">
+        <Flower />
+        <h2>No photos just yet.</h2>
+        <p>
+          A few favourite photos are all you need. Take some with your camera or
+          bring your own.
         </p>
+        <button
+          type="button"
+          onClick={onChooseLayout}
+          className="button button-primary"
+        >
+          Let&apos;s get started <FiArrowRight />
+        </button>
       </div>
     );
-  }
-
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-      {/* Left: Preview */}
-      <div className="flex flex-col items-center gap-4">
-        <PhotostripPreview
-          ref={photostripRef}
-          layout={layout}
-          images={images}
-          borderColor={borderColor}
-          borderStyle={frameStyle}
-          clipPathStyle={clipPathStyle}
-        />
-      </div>
-
-      {/* Right: Controls */}
-      <div className="w-full bg-purple-50 p-4 rounded-2xl flex-shrink-0 flex flex-col">
-        {/* Tabs */}
-        <div className="flex justify-around mb-4 border-b border-purple-200">
-          {[
-            { label: "Border", icon: <FaBorderAll />, panel: "border" },
-            { label: "Color", icon: <FaPalette />, panel: "color" },
-          ].map((item) => (
+    <div className="editor-workspace">
+      <div className="editor-preview-column">
+        <div className="summary-label">
+          <span>Your little masterpiece</span>
+          <span className="small-badge">{layout.label}</span>
+        </div>
+        <div className="preview-toolbar">
+          <div>
             <button
-              key={item.label}
-              onClick={() => setActivePanel(item.panel as "border" | "color")}
-              className={`p-3 text-2xl transition-colors ${
-                activePanel === item.panel
-                  ? "text-purple-700"
-                  : "text-purple-300 hover:text-purple-500"
-              }`}
-              aria-label={item.label}
               type="button"
+              className="small-icon-button"
+              aria-label="Undo design change"
+              title="Undo (Ctrl / Cmd Z)"
+              disabled={!session.past.length}
+              onClick={() => dispatch({ type: "undo" })}
             >
-              {item.icon}
+              <FiRotateCcw />
+            </button>
+            <button
+              type="button"
+              className="small-icon-button"
+              aria-label="Redo design change"
+              title="Redo (Shift Ctrl / Cmd Z)"
+              disabled={!session.future.length}
+              onClick={() => dispatch({ type: "redo" })}
+            >
+              <FiRotateCw />
+            </button>
+          </div>
+          <div>
+            <button
+              type="button"
+              className="small-icon-button"
+              aria-label="Reset design"
+              title="Reset styling; keep photos"
+              onClick={() => change(createDesign())}
+            >
+              <FiRefreshCw />
+            </button>
+          </div>
+        </div>
+        <div className="preview-stage">
+          <PhotostripPreview
+            ref={preview}
+            layout={layout}
+            images={images}
+            design={design}
+            selected={selected}
+            onSelect={setSelected}
+            onUpdateSticker={updateSticker}
+            onRemoveSticker={removeSticker}
+            onBegin={begin}
+            onEnd={end}
+          />
+          <span className="preview-caption">
+            {design.stickers.length
+              ? "drag a little friend to its happy place"
+              : "a moment worth keeping"}
+          </span>
+        </div>
+      </div>
+      <div className="editor-tools">
+        <div className="panel-heading">
+          <span className="panel-kicker">THE FINISHING TOUCHES</span>
+          <h2>A little more you.</h2>
+          <p>Frames, colours, little friends. Make it your kind of lovely.</p>
+        </div>
+        <div className="editor-tabs" aria-label="Photo styling">
+          {tabs.map(({ id, label, icon: Icon }) => (
+            <button
+              type="button"
+              key={id}
+              aria-pressed={panel === id}
+              onClick={() => setPanel(id)}
+            >
+              <Icon />
+              {label}
             </button>
           ))}
         </div>
-
-        {/* Panel content */}
-        <div className="flex-grow">
-          {activePanel === "border" && (
-            <div className="space-y-3 animate-fade-in">
-              <h4 className="font-semibold text-purple-800">Frame Style</h4>
-
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => handleFrameStyleChange("p-3", "thin")}
-                  className="h-16 border-2 border-purple-300 bg-white flex items-center justify-center text-purple-400"
-                >
-                  Thin
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleFrameStyleChange("rounded-xl p-4", "rounded")
-                  }
-                  className="h-16 border-2 border-purple-300 bg-white rounded-xl flex items-center justify-center text-purple-400"
-                >
-                  Rounded
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleFrameStyleChange("px-3 pt-3 pb-[82px]", "polaroid")
-                  }
-                  className="h-16 border-2 border-purple-300 bg-white rounded-md flex items-center justify-center text-purple-400"
-                >
-                  <FaImages className="mr-2" /> Polaroid
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleFrameStyleChange("rounded-full p-5", "circle")
-                  }
-                  className="h-16 border-2 border-purple-300 bg-white rounded-full flex items-center justify-center text-purple-400"
-                >
-                  Circle
-                </button>
-              </div>
-
-              {/* optional clip-path */}
-              {/* <button onClick={() => handleClipPathChange("polygon(...)")}>Clip</button> */}
+        {panel === "frame" && <FramePanel {...common} />}
+        {panel === "color" && <ColorPanel {...common} />}
+        {panel === "filters" && <FilterPanel {...common} />}
+        {panel === "text" && <TextPanel {...common} />}
+        {panel === "stickers" && (
+          <StickerPanel
+            stickers={design.stickers}
+            selected={design.stickers.find(
+              (sticker) => sticker.id === selected,
+            )}
+            onAdd={placeSticker}
+            onSelect={setSelected}
+            onUpdate={updateSticker}
+            onRemove={removeSticker}
+            onDuplicate={duplicateSticker}
+            onLayer={layerSticker}
+            createSource={createStickerSource}
+            onBegin={begin}
+            onEnd={end}
+          />
+        )}
+        <section className="save-section">
+          <div className="save-heading">
+            <h3>Keep this little moment.</h3>
+            <span
+              role="status"
+              className={`export-status ${ready ? "is-ready" : ""}`}
+            >
+              {isSaving ? (
+                "Saving..."
+              ) : ready ? (
+                <>
+                  <FiCheck /> Ready to save
+                </>
+              ) : error ? (
+                "Needs another try"
+              ) : (
+                "Preparing..."
+              )}
+            </span>
+          </div>
+          {error && (
+            <div className="notice-error" role="alert">
+              {error}
+              <button type="button" onClick={retry}>
+                Try again
+              </button>
             </div>
           )}
-
-          {activePanel === "color" && (
-            <div className="space-y-4 animate-fade-in">
-              <h4 className="font-semibold text-purple-800 mb-2">
-                Border Color
-              </h4>
-              <SketchPicker
-                color={borderColor}
-                onChangeComplete={handleColorChange}
-                width="100%"
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Download buttons */}
-        <div className="mt-auto pt-6 flex flex-col sm:flex-row gap-3">
-          <button
-            type="button"
-            onClick={() => handleDownload("png")}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-3 bg-purple-600 text-white font-semibold rounded-lg shadow-lg hover:bg-purple-700 transition-transform hover:scale-105 text-sm"
-          >
-            <FaDownload /> PNG
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleDownload("jpeg")}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-3 bg-violet-600 text-white font-semibold rounded-lg shadow-lg hover:bg-violet-700 transition-transform hover:scale-105 text-sm"
-          >
-            <FaDownload /> JPG
-          </button>
-        </div>
+          <div className="download-actions">
+            <button
+              type="button"
+              className="button button-secondary"
+              disabled={!ready || isSaving}
+              onClick={() => download("png")}
+            >
+              <FiDownload /> PNG
+            </button>
+            <button
+              type="button"
+              className="button button-primary"
+              disabled={!ready || isSaving}
+              onClick={() => download("jpeg")}
+            >
+              <FiDownload /> JPG
+            </button>
+          </div>
+          <p>
+            Stickers, filters and captions are included. Save before you leave.
+          </p>
+        </section>
       </div>
     </div>
   );

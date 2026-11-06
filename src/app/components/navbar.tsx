@@ -1,90 +1,82 @@
-// app/components/Navbar.tsx
-'use client';
+"use client";
 
-import { useState } from 'react'; // 1. Impor useState
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import Image from 'next/image';
-import { FaBars, FaTimes } from 'react-icons/fa'; // 2. Impor ikon untuk hamburger & close
+import { useState } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { usePathname } from "next/navigation";
+import { FiArrowUpRight, FiCamera, FiMenu, FiX } from "react-icons/fi";
+
+const links = [
+  { href: "/", label: "Home" },
+  { href: "/photobooth", label: "Photobooth" },
+  { href: "/about-us", label: "Our story" },
+  { href: "/contact", label: "Contact" },
+];
 
 export default function Navbar() {
   const pathname = usePathname();
-  const [isMenuOpen, setIsMenuOpen] = useState(false); // 3. State untuk mengontrol menu mobile
-
-  const navItems = [
-    { href: '/photobooth', label: 'Photobooth' },
-    { href: '/about-us', label: 'About Us' },
-    { href: '/contact', label: 'Contact' },
-  ];
-
+  const [open, setOpen] = useState(false);
   return (
-    <div className="sticky top-0 z-50 w-full flex justify-center py-4">
-      <nav className="bg-white backdrop-blur-lg shadow-lg rounded-full flex items-center justify-between px-4 py-2 w-auto">
-        {/* Logo selalu terlihat */}
-        <Link href="/" onClick={() => setIsMenuOpen(false)}>
+    <header className="site-header">
+      <nav className="page-width navigation" aria-label="Main navigation">
+        <Link
+          href="/"
+          className="brand"
+          aria-label="Ramon home"
+          onClick={() => setOpen(false)}
+        >
           <Image
             src="/ramonlogo.png"
-            alt="Ramon Logo"
-            width={100}
-            height={28}
+            alt="Ramon"
+            width={120}
+            height={36}
             priority
-            className="h-7 w-auto"
           />
         </Link>
-
-        {/* 4. Menu untuk desktop (sembunyi di layar kecil) */}
-        <div className="hidden md:flex items-center gap-4 ml-4">
-          <div className="h-6 w-px bg-purple-200"></div>
-          <div className="flex items-baseline space-x-2">
-            {navItems.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                className={`px-3 py-2 rounded-full text-sm font-medium transition-colors ${
-                  pathname === item.href
-                    ? 'bg-purple-600 text-white'
-                    : 'text-gray-600 hover:bg-purple-100 hover:text-purple-800'
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
+        <div className="desktop-links">
+          {links.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              aria-current={pathname === link.href ? "page" : undefined}
+            >
+              {link.label}
+            </Link>
+          ))}
         </div>
-        
-        {/* 5. Tombol hamburger untuk mobile (hanya tampil di layar kecil) */}
-        <div className="md:hidden ml-4">
-          <button
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="p-2 rounded-full text-purple-700 hover:bg-purple-100"
-            aria-label="Open menu"
-          >
-            {isMenuOpen ? <FaTimes size={20} /> : <FaBars size={20} />}
-          </button>
-        </div>
+        <Link href="/photobooth" className="button button-primary nav-cta">
+          <FiCamera /> Open the booth <FiArrowUpRight />
+        </Link>
+        <button
+          type="button"
+          className="icon-button mobile-menu-toggle"
+          onClick={() => setOpen((value) => !value)}
+          aria-label={open ? "Close menu" : "Open menu"}
+          aria-expanded={open}
+          aria-controls="mobile-navigation"
+        >
+          {open ? <FiX /> : <FiMenu />}
+        </button>
       </nav>
-
-      {/* 6. Panel menu mobile (muncul saat tombol hamburger di-klik) */}
-      {isMenuOpen && (
-        <div className="md:hidden absolute top-full mt-2 w-11/12 max-w-sm bg-white rounded-2xl shadow-xl overflow-hidden animate-fade-in">
-          <div className="flex flex-col p-4 space-y-2">
-            {navItems.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                onClick={() => setIsMenuOpen(false)} // Menutup menu saat link di-klik
-                className={`block px-4 py-3 rounded-xl text-base font-medium transition-colors ${
-                  pathname === item.href
-                    ? 'bg-purple-600 text-white'
-                    : 'text-gray-700 hover:bg-purple-100'
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </div>
+      {open && (
+        <nav
+          id="mobile-navigation"
+          className="mobile-navigation"
+          aria-label="Mobile navigation"
+        >
+          {links.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              onClick={() => setOpen(false)}
+              aria-current={pathname === link.href ? "page" : undefined}
+            >
+              {link.label}
+              <FiArrowUpRight />
+            </Link>
+          ))}
+        </nav>
       )}
-    </div>
+    </header>
   );
 }

@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ramon
 
-## Getting Started
+Photobooth berbasis browser dengan Next.js 15, React 19, TypeScript, dan Tailwind CSS 4. Pilih layout, gunakan kamera atau unggah foto, tambahkan bingkai, filter, stiker, dan caption, lalu simpan PNG atau JPG.
 
-First, run the development server:
+UI lavender dengan layout yang menyesuaikan perangkat: kamera portrait di HP, area kerja berdampingan di tablet/desktop, serta kontrol warna native. Rincian ada di [catatan desain UI](docs/UI-REDESIGN.md).
 
-```bash
+Editor menyediakan 25 layout, 8 gaya bingkai, 24 pilihan warna dan warna bebas, 7 pilihan pola termasuk polos, 12 filter dengan penyesuaian foto, caption, serta 60 stiker lokal (Nailong, Stitch/Angel, dan Twemoji). Stiker bisa digeser, diputar, dibalik, diubah ukurannya, diduplikasi, diatur urutan layer-nya, atau diunggah sendiri. Lihat [catatan kustomisasi](docs/CUSTOMIZATION.md); kredit tersedia di halaman `/sticker-credits`.
+
+## Menjalankan
+
+Gunakan Node.js 22 LTS atau versi LTS yang lebih baru dan npm.
+
+```sh
+npm ci
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Buka `http://localhost:3000/photobooth`. Kamera membutuhkan HTTPS pada hosting atau localhost saat pengembangan. Tidak ada environment variable atau backend yang wajib disiapkan. Font dan stiker disimpan lokal; build tidak perlu menghubungi Google Fonts atau sumber stiker.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```sh
+npm run build
+npm start
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Di Windows PowerShell yang memblokir skrip `.ps1`, gunakan `npm.cmd` dan `npx.cmd`.
 
-## Learn More
+## Pemeriksaan
 
-To learn more about Next.js, take a look at the following resources:
+```sh
+npm run lint
+npm run typecheck
+npm test
+npx playwright install chromium webkit
+npm run build
+npm run test:e2e
+npm audit --omit=dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Browser test menjalankan build produksi di `http://127.0.0.1:3100`. Jangan menjalankannya bersamaan dengan build lain pada folder `.next` yang sama. Chromium memakai kamera sintetis; WebKit menggunakan profil iPad mobile dan desktop. Hasil tes ada di `test-results/` dan trace disimpan untuk tes yang gagal.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Pengelolaan foto dan ekspor
 
-## Deploy on Vercel
+- Foto diproses di browser; kode aplikasi tidak mengunggahnya ke server.
+- Satu sesi React menyimpan layout, foto, dan seluruh desain dengan undo/redo hingga 30 langkah. Pindah tab mempertahankan pengaturan; mengganti layout mengosongkan foto dan mempertahankan desain. Refresh atau meninggalkan halaman mengakhiri sesi.
+- Foto dinormalisasi ke JPEG kualitas 0.92, sisi terpanjang maksimal 1920 piksel. Foto besar tidak disimpan sebagai base64 di `localStorage`.
+- HEIC dicoba melalui decoder native terlebih dahulu; `heic2any` dimuat hanya sebagai fallback.
+- Ekspor mengikuti ukuran/crop preview dan dibatasi 4 juta piksel dengan sisi maksimal 4096. PNG/JPG disiapkan sebelum tombol simpan aktif, sehingga native Share dapat dipanggil langsung dari klik.
+- iOS/iPadOS menggunakan file sharing jika tersedia; browser lain atau perangkat tanpa dukungan file sharing menggunakan download biasa.
+- Batal dari native Share tidak memicu download tambahan. Gambar yang gagal diproses tidak diganti file kosong.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Lihat [audit refactor](docs/REFACTOR-AUDIT.md) untuk temuan, arsitektur, riwayat bug, dan checklist pengujian iPad fisik.
