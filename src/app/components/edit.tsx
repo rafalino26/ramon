@@ -48,6 +48,7 @@ interface Props {
   dispatch: Dispatch<SessionAction>;
   createStickerSource: (blob: Blob) => string;
   onChooseLayout: () => void;
+  readOnly?: boolean;
 }
 const tabs = [
   { id: "frame", label: "Frame", icon: FiGrid },
@@ -63,6 +64,7 @@ export default function Edit({
   dispatch,
   createStickerSource,
   onChooseLayout,
+  readOnly = false,
 }: Props) {
   const { layout, images, design } = session;
   const [panel, setPanel] = useState<Panel>("frame");
@@ -186,131 +188,134 @@ export default function Edit({
           <span>Your little masterpiece</span>
           <span className="small-badge">{layout.label}</span>
         </div>
-        <div className="preview-toolbar">
-          <div>
-            <button
-              type="button"
-              className="small-icon-button"
-              aria-label="Undo design change"
-              title="Undo (Ctrl / Cmd Z)"
-              disabled={!session.past.length}
-              onClick={() => dispatch({ type: "undo" })}
-            >
-              <FiRotateCcw />
-            </button>
-            <button
-              type="button"
-              className="small-icon-button"
-              aria-label="Redo design change"
-              title="Redo (Shift Ctrl / Cmd Z)"
-              disabled={!session.future.length}
-              onClick={() => dispatch({ type: "redo" })}
-            >
-              <FiRotateCw />
-            </button>
-          </div>
-          <div>
-            <button
-              type="button"
-              className="small-icon-button"
-              aria-label="Reset design"
-              title="Reset styling; keep photos"
-              onClick={() => change(createDesign())}
-            >
-              <FiRefreshCw />
-            </button>
-          </div>
-        </div>
-        {activeSticker && (
-          <div
-            className="sticker-quick-tools"
-            role="group"
-            aria-label="Sticker quick actions"
-          >
-            <span>Selected sticker</span>
+        <fieldset disabled={readOnly} className="room-control-group">
+          <div className="preview-toolbar">
             <div>
               <button
                 type="button"
-                aria-label="Decrease sticker size"
-                title="Smaller"
-                onClick={() =>
-                  updateSticker(activeSticker.id, {
-                    size: activeSticker.size - 0.04,
-                  })
-                }
-              >
-                <FiMinus />
-              </button>
-              <button
-                type="button"
-                aria-label="Increase sticker size"
-                title="Bigger"
-                onClick={() =>
-                  updateSticker(activeSticker.id, {
-                    size: activeSticker.size + 0.04,
-                  })
-                }
-              >
-                <FiPlus />
-              </button>
-              <button
-                type="button"
-                aria-label="Rotate sticker left"
-                title="Rotate left 15 degrees"
-                onClick={() =>
-                  updateSticker(activeSticker.id, {
-                    rotation:
-                      ((activeSticker.rotation + 345 + 180) % 360) - 180,
-                  })
-                }
+                className="small-icon-button"
+                aria-label="Undo design change"
+                title="Undo (Ctrl / Cmd Z)"
+                disabled={!session.past.length}
+                onClick={() => dispatch({ type: "undo" })}
               >
                 <FiRotateCcw />
               </button>
               <button
                 type="button"
-                aria-label="Rotate sticker right"
-                title="Rotate right 15 degrees"
-                onClick={() =>
-                  updateSticker(activeSticker.id, {
-                    rotation: ((activeSticker.rotation + 15 + 180) % 360) - 180,
-                  })
-                }
+                className="small-icon-button"
+                aria-label="Redo design change"
+                title="Redo (Shift Ctrl / Cmd Z)"
+                disabled={!session.future.length}
+                onClick={() => dispatch({ type: "redo" })}
               >
                 <FiRotateCw />
               </button>
+            </div>
+            <div>
               <button
                 type="button"
-                aria-label="Flip selected sticker"
-                title="Flip"
-                onClick={() =>
-                  updateSticker(activeSticker.id, {
-                    flipped: !activeSticker.flipped,
-                  })
-                }
+                className="small-icon-button"
+                aria-label="Reset design"
+                title="Reset styling; keep photos"
+                onClick={() => change(createDesign())}
               >
-                <FiRepeat />
-              </button>
-              <button
-                type="button"
-                aria-label="Duplicate selected sticker"
-                title="Duplicate"
-                disabled={design.stickers.length >= MAX_STICKERS}
-                onClick={() => duplicateSticker(activeSticker.id)}
-              >
-                <FiCopy />
-              </button>
-              <button
-                type="button"
-                aria-label="Remove sticker from preview"
-                title="Delete"
-                onClick={() => removeSticker(activeSticker.id)}
-              >
-                <FiTrash2 />
+                <FiRefreshCw />
               </button>
             </div>
-            <small>Drag the corner to resize · drag ↻ to rotate</small>
           </div>
-        )}
+          {activeSticker && (
+            <div
+              className="sticker-quick-tools"
+              role="group"
+              aria-label="Sticker quick actions"
+            >
+              <span>Selected sticker</span>
+              <div>
+                <button
+                  type="button"
+                  aria-label="Decrease sticker size"
+                  title="Smaller"
+                  onClick={() =>
+                    updateSticker(activeSticker.id, {
+                      size: activeSticker.size - 0.04,
+                    })
+                  }
+                >
+                  <FiMinus />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Increase sticker size"
+                  title="Bigger"
+                  onClick={() =>
+                    updateSticker(activeSticker.id, {
+                      size: activeSticker.size + 0.04,
+                    })
+                  }
+                >
+                  <FiPlus />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Rotate sticker left"
+                  title="Rotate left 15 degrees"
+                  onClick={() =>
+                    updateSticker(activeSticker.id, {
+                      rotation:
+                        ((activeSticker.rotation + 345 + 180) % 360) - 180,
+                    })
+                  }
+                >
+                  <FiRotateCcw />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Rotate sticker right"
+                  title="Rotate right 15 degrees"
+                  onClick={() =>
+                    updateSticker(activeSticker.id, {
+                      rotation:
+                        ((activeSticker.rotation + 15 + 180) % 360) - 180,
+                    })
+                  }
+                >
+                  <FiRotateCw />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Flip selected sticker"
+                  title="Flip"
+                  onClick={() =>
+                    updateSticker(activeSticker.id, {
+                      flipped: !activeSticker.flipped,
+                    })
+                  }
+                >
+                  <FiRepeat />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Duplicate selected sticker"
+                  title="Duplicate"
+                  disabled={design.stickers.length >= MAX_STICKERS}
+                  onClick={() => duplicateSticker(activeSticker.id)}
+                >
+                  <FiCopy />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Remove sticker from preview"
+                  title="Delete"
+                  onClick={() => removeSticker(activeSticker.id)}
+                >
+                  <FiTrash2 />
+                </button>
+              </div>
+              <small>Drag the corner to resize · drag ↻ to rotate</small>
+            </div>
+          )}
+        </fieldset>
         <div className="preview-stage">
           <PhotostripPreview
             ref={preview}
@@ -332,45 +337,47 @@ export default function Edit({
         </div>
       </div>
       <div className="editor-tools">
-        <div className="panel-heading">
-          <span className="panel-kicker">THE FINISHING TOUCHES</span>
-          <h2>A little more you.</h2>
-          <p>Frames, colours, little friends. Make it your kind of lovely.</p>
-        </div>
-        <div className="editor-tabs" aria-label="Photo styling">
-          {tabs.map(({ id, label, icon: Icon }) => (
-            <button
-              type="button"
-              key={id}
-              aria-pressed={panel === id}
-              onClick={() => setPanel(id)}
-            >
-              <Icon />
-              {label}
-            </button>
-          ))}
-        </div>
-        {panel === "frame" && <FramePanel {...common} />}
-        {panel === "color" && <ColorPanel {...common} />}
-        {panel === "filters" && <FilterPanel {...common} />}
-        {panel === "text" && <TextPanel {...common} />}
-        {panel === "stickers" && (
-          <StickerPanel
-            stickers={design.stickers}
-            selected={design.stickers.find(
-              (sticker) => sticker.id === selected,
-            )}
-            onAdd={placeSticker}
-            onSelect={setSelected}
-            onUpdate={updateSticker}
-            onRemove={removeSticker}
-            onDuplicate={duplicateSticker}
-            onLayer={layerSticker}
-            createSource={createStickerSource}
-            onBegin={begin}
-            onEnd={end}
-          />
-        )}
+        <fieldset disabled={readOnly} className="room-control-group">
+          <div className="panel-heading">
+            <span className="panel-kicker">THE FINISHING TOUCHES</span>
+            <h2>A little more you.</h2>
+            <p>Frames, colours, little friends. Make it your kind of lovely.</p>
+          </div>
+          <div className="editor-tabs" aria-label="Photo styling">
+            {tabs.map(({ id, label, icon: Icon }) => (
+              <button
+                type="button"
+                key={id}
+                aria-pressed={panel === id}
+                onClick={() => setPanel(id)}
+              >
+                <Icon />
+                {label}
+              </button>
+            ))}
+          </div>
+          {panel === "frame" && <FramePanel {...common} />}
+          {panel === "color" && <ColorPanel {...common} />}
+          {panel === "filters" && <FilterPanel {...common} />}
+          {panel === "text" && <TextPanel {...common} />}
+          {panel === "stickers" && (
+            <StickerPanel
+              stickers={design.stickers}
+              selected={design.stickers.find(
+                (sticker) => sticker.id === selected,
+              )}
+              onAdd={placeSticker}
+              onSelect={setSelected}
+              onUpdate={updateSticker}
+              onRemove={removeSticker}
+              onDuplicate={duplicateSticker}
+              onLayer={layerSticker}
+              createSource={createStickerSource}
+              onBegin={begin}
+              onEnd={end}
+            />
+          )}
+        </fieldset>
         <section className="save-section">
           <div className="save-heading">
             <h3>Keep this little moment.</h3>

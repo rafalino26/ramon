@@ -9,6 +9,7 @@ import { FiArrowUpRight, FiCamera, FiMenu, FiX } from "react-icons/fi";
 const links = [
   { href: "/", label: "Home" },
   { href: "/photobooth", label: "Photobooth" },
+  { href: "/together", label: "Together" },
   { href: "/about-us", label: "Our story" },
   { href: "/contact", label: "Contact" },
 ];

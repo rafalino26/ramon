@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useReducer } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { FiLock } from "react-icons/fi";
 import Layout from "@/app/components/LayoutPicker";
 import { Flower } from "@/app/components/MemoryArt";
@@ -77,6 +78,9 @@ export default function PhotoboothClient() {
             Make it a moment<span className="playful-text">.</span>
           </h1>
           <p>A little creativity, a few lovely photos. All yours.</p>
+          <Link className="text-link" href="/together">
+            Make a memory together →
+          </Link>
         </div>
         <span className="privacy-note">
           <FiLock /> Your photos stay with you
