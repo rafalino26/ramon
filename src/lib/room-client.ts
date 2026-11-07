@@ -3,11 +3,12 @@ import type { EditorDesign } from "./editor-design";
 import publicConfig from "./room-public-config.json";
 
 export interface RoomState {
-  phase: "lobby" | "capture" | "edit";
+  phase: "lobby" | "layout" | "capture" | "edit";
   layout: string;
   photos: string[];
   design: EditorDesign | null;
   captureId?: string;
+  layoutChosen?: boolean;
 }
 export interface Room {
   code: string;

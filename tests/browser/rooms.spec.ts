@@ -1,5 +1,6 @@
 import { test, expect, devices, type BrowserContext } from "@playwright/test";
 import { randomUUID } from "node:crypto";
+import type { RoomState } from "../../src/lib/room-client";
 
 test("guests shoot in either order with a shared preview and pass editing control", async ({
   browser,
@@ -18,8 +19,8 @@ test("guests shoot in either order with a shared preview and pass editing contro
       phase: "lobby",
       layout: "2x2",
       photos: [] as string[],
-      design: null as unknown,
-    },
+      design: null,
+    } as RoomState,
     expires_at: new Date(Date.now() + 86400000).toISOString(),
   };
   const files = new Map<string, Buffer>();
@@ -101,6 +102,38 @@ test("guests shoot in either order with a shared preview and pass editing contro
           };
           if (photos.length < 2) room.state.phase = "capture";
         }
+        if (action === "ramon_layout_action") {
+          if (room.revision !== args.expected_revision)
+            return json({ message: "Room changed", code: "P0001" }, 400);
+          if (args.action === "continue")
+            room.state = {
+              ...room.state,
+              phase: "layout",
+              layoutChosen: false,
+            };
+          if (args.action === "change")
+            room.state = {
+              ...room.state,
+              phase: "layout",
+              photos: [],
+              layoutChosen: true,
+              captureId: randomUUID(),
+            };
+          if (args.action === "select")
+            room.state = {
+              ...room.state,
+              layout: args.layout_id,
+              layoutChosen: true,
+            };
+          if (args.action === "start")
+            room.state = {
+              ...room.state,
+              phase: "capture",
+              photos: [],
+              captureId: randomUUID(),
+            };
+          room.revision++;
+        }
         return json(room);
       }
       const marker = "/storage/v1/object/";
@@ -147,13 +180,35 @@ test("guests shoot in either order with a shared preview and pass editing contro
     await a.getByLabel("Your name", { exact: true }).fill("Rafa");
     await a.getByRole("button", { name: "Create room", exact: true }).click();
     await expect(a.getByText("1/2 people", { exact: false })).toBeVisible();
+    await expect(
+      a.getByRole("button", { name: "Continue", exact: true }),
+    ).toBeDisabled();
     code = (await a.locator(".room-summary strong").textContent())!;
     await b.goto(`/together?room=${code}`);
     await b.getByLabel("Your name", { exact: true }).fill("Partner");
     await b.getByRole("button", { name: "Join room", exact: true }).click();
     await expect(a.getByText("2/2 people", { exact: false })).toBeVisible();
-    await a.getByLabel("Room layout").selectOption("1x1");
+    await expect(
+      a.getByRole("button", { name: "1 x 1 layout", exact: true }),
+    ).toHaveCount(0);
+    await b.getByRole("button", { name: "Continue", exact: true }).click();
+    await b.getByRole("button", { name: "1 x 1 layout", exact: true }).click();
+    await expect(
+      a.getByRole("button", { name: "1 x 1 layout", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
     await a
+      .getByRole("button", { name: "Start taking photos", exact: true })
+      .click();
+    await b.getByRole("button", { name: "Change layout", exact: true }).click();
+    await a.getByRole("button", { name: "2 x 2 layout", exact: true }).click();
+    await expect(
+      b.getByRole("button", { name: "2 x 2 layout", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await a.getByRole("button", { name: "1 x 1 layout", exact: true }).click();
+    await expect(
+      b.getByRole("button", { name: "1 x 1 layout", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await b
       .getByRole("button", { name: "Start taking photos", exact: true })
       .click();
     let cameraStream = "";
@@ -166,7 +221,9 @@ test("guests shoot in either order with a shared preview and pass editing contro
       ).toBeEnabled();
       cameraStream = await a
         .locator("video")
-        .evaluate((video) => (video.srcObject as MediaStream).id);
+        .evaluate(
+          (video) => ((video as HTMLVideoElement).srcObject as MediaStream).id,
+        );
     }
     for (const page of [b, a]) {
       await expect(
@@ -205,12 +262,25 @@ test("guests shoot in either order with a shared preview and pass editing contro
         await expect(
           a.locator('[data-testid="photostrip"] [data-photo-slot="0"] img'),
         ).toBeVisible({ timeout: 15000 });
+        await a
+          .getByRole("button", { name: "Change layout", exact: true })
+          .click();
+        await expect(a.getByRole("alertdialog")).toBeVisible();
+        await a
+          .getByRole("button", { name: "Keep current layout", exact: true })
+          .click();
+        await expect(
+          a.locator('[data-testid="photostrip"] [data-photo-slot="0"] img'),
+        ).toBeVisible({ timeout: 15000 });
         if (cameraStream)
           await expect
             .poll(() =>
               a
                 .locator("video")
-                .evaluate((video) => (video.srcObject as MediaStream).id),
+                .evaluate(
+                  (video) =>
+                    ((video as HTMLVideoElement).srcObject as MediaStream).id,
+                ),
             )
             .toBe(cameraStream);
       }
@@ -236,6 +306,17 @@ test("guests shoot in either order with a shared preview and pass editing contro
     await expect(
       b.getByRole("button", { name: "PNG", exact: true }),
     ).toBeEnabled();
+    await b.getByRole("button", { name: "Change layout", exact: true }).click();
+    await b
+      .getByRole("button", {
+        name: "Change layout and clear photos",
+        exact: true,
+      })
+      .click();
+    await b.getByRole("button", { name: "2 x 2 layout", exact: true }).click();
+    await expect(
+      a.getByRole("button", { name: "2 x 2 layout", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
     await a.screenshot({
       path: info.outputPath("together-host.png"),
       fullPage: true,

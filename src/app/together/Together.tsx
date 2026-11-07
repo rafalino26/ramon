@@ -15,6 +15,7 @@ import { composeRoomPhoto } from "@/lib/room-collage";
 import RoomCamera from "./RoomCamera";
 import RoomEditor from "./RoomEditor";
 import PhotostripPreview from "../components/photostrip";
+import LayoutGallery from "../components/LayoutGallery";
 
 export default function Together() {
   const client = useRef<RoomClient | null>(null);
@@ -26,6 +27,7 @@ export default function Together() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmLayout, setConfirmLayout] = useState(false);
   const locked = useRef(false);
   const assets = useRef(new Map<string, string>());
   const [prepared, setPrepared] = useState<{
@@ -129,7 +131,10 @@ export default function Together() {
   const photoKey = JSON.stringify(room?.state.photos);
   const designKey = JSON.stringify(room?.state.design);
   useEffect(() => {
-    if (!room || room.state.phase === "lobby") {
+    if (
+      !room ||
+      (room.state.phase !== "capture" && room.state.phase !== "edit")
+    ) {
       setPrepared(null);
       return;
     }
@@ -180,6 +185,21 @@ export default function Together() {
   }, [photoKey, designKey, room?.state.phase, layout, resolveAsset]);
   const update = async (state: RoomState, editor = current.current!.editor) =>
     accept(await saveRoom(client.current!, current.current!, state, editor));
+  const layoutAction = async (
+    action: "continue" | "change" | "select" | "start",
+    layoutId?: string,
+  ) => {
+    const snapshot = current.current!;
+    accept(
+      await roomRpc(client.current!, "ramon_layout_action", {
+        room_code: snapshot.code,
+        expected_revision: snapshot.revision,
+        action,
+        layout_id: layoutId ?? null,
+      }),
+    );
+  };
+  useEffect(() => setConfirmLayout(false), [room?.state.phase]);
   const upload = async (blob: Blob) => {
     const path = `${current.current!.code}/${user}/${crypto.randomUUID()}.${blob.type === "image/png" ? "png" : "jpg"}`;
     const { error } = await client
@@ -312,6 +332,19 @@ export default function Together() {
               </p>
             </div>
             <div className="room-actions">
+              {(room.state.phase === "capture" ||
+                room.state.phase === "edit") && (
+                <button
+                  className="button button-secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    if (room.state.photos.length) setConfirmLayout(true);
+                    else void run(() => layoutAction("change"));
+                  }}
+                >
+                  Change layout
+                </button>
+              )}
               <button
                 className="button button-secondary"
                 onClick={() => {
@@ -336,52 +369,91 @@ export default function Together() {
               </button>
             </div>
           </section>
-          {room.state.phase === "lobby" && (
-            <section className="room-card">
-              <h2>Choose your layout</h2>
+          {confirmLayout && (
+            <div
+              className="room-note"
+              role="alertdialog"
+              aria-labelledby="change-layout-title"
+            >
+              <h2 id="change-layout-title">Choose a different layout?</h2>
               <p>
-                {other
-                  ? "You are both here. Each photo slot will contain a portrait from each of you."
-                  : "Share the room code and wait for your partner to join."}
+                Photos and unshared edits will be cleared for both of you. Your
+                last shared styling will be kept.
               </p>
-              <label>
-                Layout
-                <select
-                  aria-label="Room layout"
-                  disabled={!mine || busy}
-                  value={layout.id}
-                  onChange={(event) => {
-                    const id = event.target.value;
-                    void run(() =>
-                      update({ ...current.current!.state, layout: id }),
-                    );
-                  }}
-                >
-                  {layouts.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label} · {getSlotCount(item)} paired photos
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {mine && (
+              <div className="room-actions">
                 <button
                   className="button button-primary"
-                  disabled={!other || busy}
+                  disabled={busy}
                   onClick={() =>
-                    void run(() =>
-                      update({
-                        ...current.current!.state,
-                        phase: "capture",
-                        photos: [],
-                        captureId: crypto.randomUUID(),
-                      }),
-                    )
+                    void run(async () => {
+                      await layoutAction("change");
+                      setConfirmLayout(false);
+                    })
                   }
                 >
-                  Start taking photos
+                  Change layout and clear photos
                 </button>
-              )}
+                <button
+                  className="button button-secondary"
+                  disabled={busy}
+                  onClick={() => setConfirmLayout(false)}
+                >
+                  Keep current layout
+                </button>
+              </div>
+            </div>
+          )}
+          {room.state.phase === "lobby" && (
+            <section className="room-card">
+              <h2>
+                {other ? "You’re both here." : "Waiting for your partner."}
+              </h2>
+              <p>
+                {other
+                  ? "Continue together to find your favourite layout."
+                  : "Copy the invite link above and send it to your partner."}
+              </p>
+              <button
+                className="button button-primary"
+                disabled={!other || busy}
+                onClick={() => void run(() => layoutAction("continue"))}
+              >
+                Continue
+              </button>
+            </section>
+          )}
+          {room.state.phase === "layout" && (
+            <section className="room-card">
+              <div className="panel-heading">
+                <span className="panel-kicker">
+                  EVERY MEMORY NEEDS A LITTLE FRAME
+                </span>
+                <h2>Find your favourite shape.</h2>
+                <p>
+                  Both of you can choose. Your selection appears on your
+                  partner’s screen.
+                </p>
+              </div>
+              <fieldset disabled={busy} className="room-control-group">
+                <LayoutGallery
+                  selectedLayout={room.state.layoutChosen ? layout : null}
+                  onSelectLayout={(choice) =>
+                    void run(() => layoutAction("select", choice.id))
+                  }
+                  description="One portrait from each of you in every slot. Start whenever you are both ready."
+                  actions={
+                    <div className="summary-actions">
+                      <button
+                        className="button button-primary"
+                        disabled={!room.state.layoutChosen || busy}
+                        onClick={() => void run(() => layoutAction("start"))}
+                      >
+                        Start taking photos
+                      </button>
+                    </div>
+                  }
+                />
+              </fieldset>
             </section>
           )}
           {room.state.phase === "capture" && (
