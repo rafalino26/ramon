@@ -20,7 +20,7 @@ export default function RoomEditor({
   onRetake,
 }: {
   layout: LayoutInfo;
-  images: string[];
+  images: (string | null)[];
   design: EditorDesign;
   controller: boolean;
   busy: boolean;

@@ -14,6 +14,7 @@ import { createDesign, type EditorDesign } from "@/lib/editor-design";
 import { composeRoomPhoto } from "@/lib/room-collage";
 import RoomCamera from "./RoomCamera";
 import RoomEditor from "./RoomEditor";
+import PhotostripPreview from "../components/photostrip";
 
 export default function Together() {
   const client = useRef<RoomClient | null>(null);
@@ -28,7 +29,7 @@ export default function Together() {
   const locked = useRef(false);
   const assets = useRef(new Map<string, string>());
   const [prepared, setPrepared] = useState<{
-    photos: string[];
+    photos: (string | null)[];
     design: EditorDesign;
   } | null>(null);
   const accept = useCallback((next: Room) => {
@@ -128,7 +129,7 @@ export default function Together() {
   const photoKey = JSON.stringify(room?.state.photos);
   const designKey = JSON.stringify(room?.state.design);
   useEffect(() => {
-    if (!room || room.state.phase !== "edit") {
+    if (!room || room.state.phase === "lobby") {
       setPrepared(null);
       return;
     }
@@ -136,9 +137,13 @@ export default function Together() {
     const owned: string[] = [];
     setPrepared(null);
     const prepare = async () => {
-      const photos: string[] = [];
+      const photos: (string | null)[] = [];
       const cells = getCells(layout);
       for (let index = 0; index < getSlotCount(layout); index++) {
+        if (!room.state.photos[index * 2]) {
+          photos.push(null);
+          continue;
+        }
         const pair = await Promise.all(
           room.state.photos.slice(index * 2, index * 2 + 2).map(resolveAsset),
         );
@@ -232,11 +237,18 @@ export default function Together() {
     });
   const mine = room?.editor === user;
   const other = room?.members.find((id) => id !== user);
+  const sharedCount = room?.state.photos.length ?? 0;
+  const submitted =
+    sharedCount % 2 === 1 &&
+    room?.state.photos[sharedCount - 1].split("/")[1] === user;
   return (
     <div className="page-width together-page">
       <span className="eyebrow">A LITTLE CLOSER, EVEN FROM AFAR</span>
       <h1>A moment for two.</h1>
-      <p>Take turns with your own cameras, then make one memory together.</p>
+      <p>
+        Keep your camera open, share a pose, and watch your memory come
+        together.
+      </p>
       {error && (
         <p className="notice-error" role="alert">
           {error}
@@ -362,6 +374,7 @@ export default function Together() {
                         ...current.current!.state,
                         phase: "capture",
                         photos: [],
+                        captureId: crypto.randomUUID(),
                       }),
                     )
                   }
@@ -372,42 +385,40 @@ export default function Together() {
             </section>
           )}
           {room.state.phase === "capture" && (
-            <section className="room-card">
-              <h2>
-                Photo {Math.floor(room.state.photos.length / 2) + 1} of{" "}
-                {getSlotCount(layout)}
-              </h2>
-              <p>
-                {mine
-                  ? "Your turn. Take a photo and approve it before passing the turn."
-                  : `${room.names[room.members.indexOf(room.editor)]} is taking a photo. Their camera stays on their device.`}
-              </p>
-              <p>
-                {room.state.photos.length} of {getSlotCount(layout) * 2}{" "}
-                portraits shared
-              </p>
-              {mine && (
+            <section className="room-card room-capture-workspace">
+              <div className="room-capture-camera">
+                <h2>
+                  Photo {Math.floor(room.state.photos.length / 2) + 1} of{" "}
+                  {getSlotCount(layout)}
+                </h2>
+                <p>
+                  {submitted
+                    ? "Your portrait is in this slot. Your camera stays open while your partner adds theirs."
+                    : "Both cameras are ready to use. Whoever shares first appears first in this pair."}
+                </p>
+                <p>
+                  {room.state.photos.length} of {getSlotCount(layout) * 2}{" "}
+                  portraits shared
+                </p>
                 <RoomCamera
-                  key={room.state.photos.length}
-                  disabled={busy}
+                  key={room.state.captureId ?? "legacy"}
+                  disabled={busy || submitted}
                   onUse={async (blob) => {
                     if (locked.current)
                       throw new Error("Please wait for the current action.");
                     locked.current = true;
                     setBusy(true);
                     let path: string | null = null;
+                    const shot = current.current!;
                     try {
                       path = await upload(blob);
-                      const latest = current.current!;
-                      const photos = [...latest.state.photos, path];
-                      const done = photos.length === getSlotCount(layout) * 2;
-                      await update(
-                        {
-                          ...latest.state,
-                          photos,
-                          phase: done ? "edit" : "capture",
-                        },
-                        done ? latest.members[0] : other!,
+                      accept(
+                        await roomRpc(client.current!, "ramon_submit_photo", {
+                          room_code: shot.code,
+                          photo_path: path,
+                          pair_index: Math.floor(shot.state.photos.length / 2),
+                          capture_id: shot.state.captureId ?? "",
+                        }),
                       );
                     } catch (cause) {
                       if (path)
@@ -421,7 +432,34 @@ export default function Together() {
                     }
                   }}
                 />
-              )}
+              </div>
+              <div className="room-capture-preview">
+                <h2>Your shared photobooth</h2>
+                <p className="editor-hint">
+                  One portrait from each person in every slot. New photos appear
+                  here as they arrive.
+                </p>
+                <div className="preview-stage">
+                  <PhotostripPreview
+                    layout={layout}
+                    images={
+                      prepared?.photos ?? Array(getSlotCount(layout)).fill(null)
+                    }
+                    design={prepared?.design ?? createDesign()}
+                    selected={null}
+                    onSelect={() => {}}
+                    onUpdateSticker={() => {}}
+                    onRemoveSticker={() => {}}
+                    onBegin={() => {}}
+                    onEnd={() => {}}
+                  />
+                </div>
+                <p role="status">
+                  {prepared
+                    ? `${sharedCount} portraits in the layout`
+                    : "Updating preview…"}
+                </p>
+              </div>
             </section>
           )}
           {room.state.phase === "edit" &&
@@ -441,6 +479,7 @@ export default function Together() {
                         ...current.current!.state,
                         phase: "capture",
                         photos: current.current!.state.photos.slice(0, -2),
+                        captureId: crypto.randomUUID(),
                       },
                       current.current!.members[0],
                     ),

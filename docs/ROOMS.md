@@ -1,6 +1,6 @@
 # Together rooms
 
-`/together` provides a two-person room with anonymous authentication, turn-taking, approved photo uploads, paired photos in every layout slot, and a shared editor with explicit publishing and controller handoff. The room refreshes every two seconds while visible and every fifteen seconds in a background tab. Camera streams remain on the participant's device. Approved portraits and uploaded stickers are stored in the private `room-photos` bucket.
+`/together` provides a two-person room with anonymous authentication, unordered photo sharing, a persistent local camera preview, paired photos in every layout slot, and a shared editor with explicit publishing and controller handoff. The room refreshes every two seconds while visible and every fifteen seconds in a background tab. Camera streams remain on the participant's device. Approved portraits and uploaded stickers are stored in the private `room-photos` bucket.
 
 ## Project setup
 
@@ -15,7 +15,7 @@ Enable Anonymous Sign-Ins and run `supabase/migrations/202611070001_rooms.sql` o
 
 ## Use
 
-Create a room, share its code or invite link, and wait for the second participant. The creator chooses a layout. Each participant approves one portrait per slot, taking turns. Square/wide slots use side-by-side portraits, while portrait slots stack them vertically. After all slots are filled, the creator has editing control. **Share design changes** publishes a snapshot. **Save & pass control** publishes and gives the other participant editing control. Both can download PNG/JPG. **Retake the last pair** returns the final slot to capture using the last shared design. Unpublished edits are local to the current editor.
+Create a room, share its code or invite link, and wait for the second participant. The creator chooses a layout. Both participants can shoot at any time. The camera button captures and shares immediately, while uploads are reviewed before sharing. Each slot contains one portrait per person in server arrival order. The shared layout displays the first portrait immediately with a waiting area for the second. Concurrent submissions are appended under a database row lock, retries are idempotent, and stale capture sessions are rejected. Square/wide slots use side-by-side portraits, while portrait slots stack them vertically. After all slots are filled, the creator has editing control. **Share design changes** publishes a snapshot. **Save & pass control** publishes and gives the other participant editing control. Both can download PNG/JPG. **Retake the last pair** returns the final slot to capture using the last shared design. Unpublished edits are local to the current editor.
 
 Room membership belongs to the anonymous browser identity. Rejoining in that browser preserves membership. Clearing site data creates a new identity, which cannot take an already occupied seat. Leaving the page does not release the seat, so the original participant can reconnect. The room code can be entered again after a reload. No live video/audio is transmitted.
 

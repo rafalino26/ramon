@@ -100,3 +100,54 @@
     font-size: 19px;
   }
 }
+.room-capture-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+.room-capture-camera,
+.room-capture-preview {
+  min-width: 0;
+}
+.room-capture-preview {
+  position: sticky;
+  top: 110px;
+}
+.room-capture-preview .preview-stage {
+  min-height: 300px;
+}
+.room-camera-empty {
+  display: grid;
+  place-content: center;
+  text-align: center;
+  width: min(100%, 360px);
+  aspect-ratio: 3/4;
+  background: #f2eafb;
+  color: #80668f;
+  border: 1px dashed #c8ace2;
+  border-radius: 18px;
+  margin: auto;
+  padding: 18px;
+}
+.room-camera > video {
+  max-height: 60svh;
+}
+@media (max-width: 767px) {
+  .room-capture-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
+  }
+  .room-capture-preview {
+    position: static;
+  }
+  .room-capture-preview .preview-stage {
+    max-height: 360px;
+  }
+  .room-camera > video,
+  .room-camera-empty {
+    max-height: 50svh;
+    width: auto;
+    max-width: 100%;
+  }
+}

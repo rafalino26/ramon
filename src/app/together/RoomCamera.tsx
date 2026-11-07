@@ -29,7 +29,7 @@ export default function RoomCamera({
     return () => URL.revokeObjectURL(url);
   }, [candidate]);
   useEffect(() => {
-    if (!opened || candidate) return;
+    if (!opened) return;
     if (!navigator.mediaDevices?.getUserMedia) {
       setError(
         "Camera access requires HTTPS or localhost. You can also upload a photo.",
@@ -67,14 +67,22 @@ export default function RoomCamera({
       stream.current?.getTracks().forEach((track) => track.stop());
       stream.current = null;
     };
-  }, [opened, candidate]);
+  }, [opened]);
   useEffect(() => () => controller.current?.abort(), []);
   const capture = async () => {
     if (!video.current) return;
     setWorking(true);
     setError("");
     try {
-      setCandidate(await captureVideo(video.current, true, "normal", 0.75));
+      const box = video.current.getBoundingClientRect();
+      await onUse(
+        await captureVideo(
+          video.current,
+          true,
+          "normal",
+          box.width / box.height,
+        ),
+      );
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Could not capture the photo.",
@@ -85,9 +93,7 @@ export default function RoomCamera({
   };
   return (
     <section className="room-camera">
-      {preview ? (
-        <img src={preview} alt="Your photo before sharing" />
-      ) : opened ? (
+      {opened && (
         <video
           ref={video}
           autoPlay
@@ -95,11 +101,14 @@ export default function RoomCamera({
           playsInline
           onLoadedData={() => setReady(true)}
         />
-      ) : (
-        <p>
-          Your camera opens only when you choose. Approve your photo before
-          sharing it.
-        </p>
+      )}
+      {preview && <img src={preview} alt="Your photo before sharing" />}
+      {!opened && !preview && (
+        <div className="room-camera-empty">
+          Your camera preview appears here.
+          <br />
+          Open your camera to start.
+        </div>
       )}
       <div className="room-actions">
         {candidate ? (
@@ -142,7 +151,7 @@ export default function RoomCamera({
                 opened ? void capture() : (setError(""), setOpened(true))
               }
             >
-              {opened ? "Take photo" : "Open my camera"}
+              {opened ? "Take & share photo" : "Open my camera"}
             </button>
             <label className="button button-secondary">
               Upload a photo

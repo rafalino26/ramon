@@ -8,7 +8,7 @@ Editor menyediakan 25 layout, 8 gaya bingkai, 24 pilihan warna dan warna bebas, 
 
 ## Menjalankan
 
-Mode dua orang tersedia di `/together`. Room memakai Supabase, foto bergantian, kolase dua potret per slot, dan editor dengan pergantian kontrol. Konfigurasi project, hosting, serta job pembersihan foto dijelaskan di [panduan room](docs/ROOMS.md).
+Mode dua orang tersedia di `/together`. Room memakai Supabase, preview kamera lokal, foto tanpa urutan giliran, kolase dua potret per slot, dan editor dengan pergantian kontrol. Konfigurasi project, hosting, serta job pembersihan foto dijelaskan di [panduan room](docs/ROOMS.md).
 
 Gunakan Node.js 22 LTS atau versi LTS yang lebih baru dan npm.
 

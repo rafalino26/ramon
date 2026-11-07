@@ -7,6 +7,7 @@ export interface RoomState {
   layout: string;
   photos: string[];
   design: EditorDesign | null;
+  captureId?: string;
 }
 export interface Room {
   code: string;
@@ -19,7 +20,9 @@ export interface Room {
 }
 export function createRoomClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || publicConfig.url;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || publicConfig.publishableKey;
+  const key =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    publicConfig.publishableKey;
   if (!url || !key)
     throw new Error(
       "Room configuration is missing. Set the Supabase environment variables.",

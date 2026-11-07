@@ -1,12 +1,12 @@
 import { test, expect, devices, type BrowserContext } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 
-test("two guests share a room, take turns, compose one slot, and pass editing control", async ({
+test("guests shoot in either order with a shared preview and pass editing control", async ({
   browser,
 }, info) => {
   test.setTimeout(90_000);
-  const hostId = randomUUID(),
-    guestId = randomUUID();
+  const hostId: string = randomUUID(),
+    guestId: string = randomUUID();
   let code = "ABCDEF123456";
   let room = {
     code,
@@ -91,6 +91,16 @@ test("two guests share a room, take turns, compose one slot, and pass editing co
             revision: room.revision + 1,
           };
         }
+        if (action === "ramon_submit_photo") {
+          const photos = [...room.state.photos, args.photo_path];
+          room = {
+            ...room,
+            state: { ...room.state, photos, phase: "edit" },
+            editor: hostId,
+            revision: room.revision + 1,
+          };
+          if (photos.length < 2) room.state.phase = "capture";
+        }
         return json(room);
       }
       const marker = "/storage/v1/object/";
@@ -121,11 +131,18 @@ test("two guests share a room, take turns, compose one slot, and pass editing co
     }
     const a = await host.newPage(),
       b = await guest.newPage();
-    portraitBytes = Buffer.from(await a.evaluate(() => {
-      const canvas = document.createElement("canvas"); canvas.width = 600; canvas.height = 800;
-      const context = canvas.getContext("2d")!; context.fillStyle = "#e598bd"; context.fillRect(0, 0, 600, 800);
-      return canvas.toDataURL("image/jpeg", .92).split(",")[1];
-    }), "base64");
+    portraitBytes = Buffer.from(
+      await a.evaluate(() => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 600;
+        canvas.height = 800;
+        const context = canvas.getContext("2d")!;
+        context.fillStyle = "#e598bd";
+        context.fillRect(0, 0, 600, 800);
+        return canvas.toDataURL("image/jpeg", 0.92).split(",")[1];
+      }),
+      "base64",
+    );
     await a.goto("/together");
     await a.getByLabel("Your name", { exact: true }).fill("Rafa");
     await a.getByRole("button", { name: "Create room", exact: true }).click();
@@ -139,41 +156,64 @@ test("two guests share a room, take turns, compose one slot, and pass editing co
     await a
       .getByRole("button", { name: "Start taking photos", exact: true })
       .click();
-    for (const page of [a, b]) {
+    let cameraStream = "";
+    if (info.project.name === "chromium" && !process.env.RAMON_LIVE_ROOM_TEST) {
+      await a
+        .getByRole("button", { name: "Open my camera", exact: true })
+        .click();
       await expect(
-        page.getByText("Your turn.", { exact: false }),
+        a.getByRole("button", { name: "Take & share photo", exact: true }),
+      ).toBeEnabled();
+      cameraStream = await a
+        .locator("video")
+        .evaluate((video) => (video.srcObject as MediaStream).id);
+    }
+    for (const page of [b, a]) {
+      await expect(
+        page.getByText("Both cameras are ready", { exact: false }),
       ).toBeVisible();
       if (
         page === a &&
         info.project.name === "chromium" &&
         !process.env.RAMON_LIVE_ROOM_TEST
       ) {
-        await page
-          .getByRole("button", { name: "Open my camera", exact: true })
-          .click();
         await expect(
-          page.getByRole("button", { name: "Take photo", exact: true }),
+          page.getByRole("button", { name: "Take & share photo", exact: true }),
         ).toBeEnabled();
         await page
-          .getByRole("button", { name: "Take photo", exact: true })
+          .getByRole("button", { name: "Take & share photo", exact: true })
           .click();
       } else {
+        await page.locator('input[type="file"]').setInputFiles({
+          name: "portrait.svg",
+          mimeType: "image/svg+xml",
+          buffer: Buffer.from(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800"><rect width="600" height="800" fill="#e598bd"/></svg>',
+          ),
+        });
         await page
-          .locator('input[type="file"]')
-          .setInputFiles({
-            name: "portrait.svg",
-            mimeType: "image/svg+xml",
-            buffer: Buffer.from(
-              '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800"><rect width="600" height="800" fill="#e598bd"/></svg>',
-            ),
-          });
+          .getByRole("button", { name: "Use this photo", exact: true })
+          .click();
+        await expect(
+          page.getByRole("button", { name: "Use this photo", exact: true }),
+        ).not.toBeVisible({ timeout: 20000 });
       }
-      await page
-        .getByRole("button", { name: "Use this photo", exact: true })
-        .click();
-      await expect(
-        page.getByRole("button", { name: "Use this photo", exact: true }),
-      ).not.toBeVisible({ timeout: 20000 });
+      if (page === b) {
+        await expect(
+          b.getByText("Your portrait is in this slot.", { exact: false }),
+        ).toBeVisible({ timeout: 15000 });
+        await expect(
+          a.locator('[data-testid="photostrip"] [data-photo-slot="0"] img'),
+        ).toBeVisible({ timeout: 15000 });
+        if (cameraStream)
+          await expect
+            .poll(() =>
+              a
+                .locator("video")
+                .evaluate((video) => (video.srcObject as MediaStream).id),
+            )
+            .toBe(cameraStream);
+      }
     }
     await expect(
       a.getByRole("button", { name: "Share design changes", exact: true }),
