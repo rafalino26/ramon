@@ -1,8 +1,9 @@
 import { test, expect, devices, type BrowserContext } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import type { RoomState } from "../../src/lib/room-client";
+import { layouts, getSlotCount } from "../../src/lib/layout";
 
-test("guests shoot in either order with a shared preview and pass editing control", async ({
+test("invite guests fill single-photo slots in either order and pass editing control", async ({
   browser,
 }, info) => {
   test.setTimeout(90_000);
@@ -31,8 +32,12 @@ test("guests shoot in either order with a shared preview and pass editing contro
       : info.project.name.startsWith("webkit")
         ? devices["iPad Pro 11"]
         : devices["Desktop Chrome"];
-  const host = await browser.newContext(device),
-    guest = await browser.newContext(device);
+  const contextOptions = {
+    ...device,
+    userAgent: info.project.use.userAgent ?? device.userAgent,
+  };
+  const host = await browser.newContext(contextOptions),
+    guest = await browser.newContext(contextOptions);
   const install = async (context: BrowserContext, id: string) => {
     await context.route("https://*.supabase.co/**", async (route) => {
       const request = route.request(),
@@ -101,6 +106,37 @@ test("guests shoot in either order with a shared preview and pass editing contro
             revision: room.revision + 1,
           };
           if (photos.length < 2) room.state.phase = "capture";
+        }
+        if (action === "ramon_start_single_capture") {
+          room = {
+            ...room,
+            state: {
+              ...room.state,
+              phase: "capture",
+              photoMode: "single",
+              photos: [],
+              captureId: randomUUID(),
+            },
+            revision: room.revision + 1,
+          };
+        }
+        if (action === "ramon_submit_single_photo") {
+          const slots = getSlotCount(
+            layouts.find((layout) => layout.id === room.state.layout)!,
+          );
+          if (room.state.photos.length >= slots)
+            return json({ message: "The layout is full", code: "P0001" }, 400);
+          const photos = [...room.state.photos, args.photo_path];
+          room = {
+            ...room,
+            state: {
+              ...room.state,
+              photos,
+              phase: photos.length === slots ? "edit" : "capture",
+            },
+            editor: hostId,
+            revision: room.revision + 1,
+          };
         }
         if (action === "ramon_layout_action") {
           if (room.revision !== args.expected_revision)
@@ -185,6 +221,18 @@ test("guests shoot in either order with a shared preview and pass editing contro
     ).toBeDisabled();
     code = (await a.locator(".room-summary strong").textContent())!;
     await b.goto(`/together?room=${code}`);
+    await expect(
+      b.getByRole("button", { name: "Create room", exact: true }),
+    ).toHaveCount(0);
+    await expect(b.getByLabel("Room code", { exact: true })).toHaveValue(code);
+    await expect(b.getByLabel("Room code", { exact: true })).toHaveJSProperty(
+      "readOnly",
+      true,
+    );
+    await b.screenshot({
+      path: info.outputPath("invitation.png"),
+      fullPage: true,
+    });
     await b.getByLabel("Your name", { exact: true }).fill("Partner");
     await b.getByRole("button", { name: "Join room", exact: true }).click();
     await expect(a.getByText("2/2 people", { exact: false })).toBeVisible();
@@ -204,9 +252,9 @@ test("guests shoot in either order with a shared preview and pass editing contro
     await expect(
       b.getByRole("button", { name: "2 x 2 layout", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
-    await a.getByRole("button", { name: "1 x 1 layout", exact: true }).click();
+    await a.getByRole("button", { name: "2 x 3 layout", exact: true }).click();
     await expect(
-      b.getByRole("button", { name: "1 x 1 layout", exact: true }),
+      b.getByRole("button", { name: "2 x 3 layout", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
     await b
       .getByRole("button", { name: "Start taking photos", exact: true })
@@ -225,7 +273,7 @@ test("guests shoot in either order with a shared preview and pass editing contro
           (video) => ((video as HTMLVideoElement).srcObject as MediaStream).id,
         );
     }
-    for (const page of [b, a]) {
+    for (const [index, page] of [b, a, a, b, b, a].entries()) {
       await expect(
         page.getByText("Both cameras are ready", { exact: false }),
       ).toBeVisible();
@@ -255,10 +303,19 @@ test("guests shoot in either order with a shared preview and pass editing contro
           page.getByRole("button", { name: "Use this photo", exact: true }),
         ).not.toBeVisible({ timeout: 20000 });
       }
-      if (page === b) {
+      if (index < 5) {
         await expect(
-          b.getByText("Your portrait is in this slot.", { exact: false }),
+          page.getByText(`${index + 1} of 6 photos shared`, { exact: true }),
         ).toBeVisible({ timeout: 15000 });
+        await expect(page.locator("[data-photo-slot] img")).toHaveCount(
+          index + 1,
+          { timeout: 15000 },
+        );
+      }
+      if (index === 0) {
+        await expect(
+          b.getByRole("button", { name: "Open my camera", exact: true }),
+        ).toBeEnabled();
         await expect(
           a.locator('[data-testid="photostrip"] [data-photo-slot="0"] img'),
         ).toBeVisible({ timeout: 15000 });
@@ -288,6 +345,7 @@ test("guests shoot in either order with a shared preview and pass editing contro
     await expect(
       a.getByRole("button", { name: "Share design changes", exact: true }),
     ).toBeVisible({ timeout: 15000 });
+    await expect(a.locator("[data-photo-slot] img")).toHaveCount(6);
     await a.getByRole("button", { name: "Text", exact: true }).click();
     await a.getByLabel("Caption", { exact: true }).fill("Together, from afar");
     await a.getByLabel("Caption", { exact: true }).press("Tab");
@@ -306,6 +364,28 @@ test("guests shoot in either order with a shared preview and pass editing contro
     await expect(
       b.getByRole("button", { name: "PNG", exact: true }),
     ).toBeEnabled();
+    await b
+      .getByRole("button", { name: "Retake the last photo", exact: true })
+      .click();
+    await expect(
+      b.getByText("5 of 6 photos shared", { exact: true }),
+    ).toBeVisible();
+    await expect(b.locator("[data-photo-slot] img")).toHaveCount(5);
+    await b.locator('input[type="file"]').setInputFiles({
+      name: "retake.jpg",
+      mimeType: "image/jpeg",
+      buffer: portraitBytes,
+    });
+    await b
+      .getByRole("button", { name: "Use this photo", exact: true })
+      .click();
+    await expect(
+      a.getByRole("button", { name: "Share design changes", exact: true }),
+    ).toBeVisible({ timeout: 15000 });
+    await expect(a.locator("[data-photo-slot] img")).toHaveCount(6);
+    await expect(a.locator("[data-caption-text]")).toHaveText(
+      "Together, from afar",
+    );
     await b.getByRole("button", { name: "Change layout", exact: true }).click();
     await b
       .getByRole("button", {

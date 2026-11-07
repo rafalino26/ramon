@@ -9,6 +9,7 @@ export interface RoomState {
   design: EditorDesign | null;
   captureId?: string;
   layoutChosen?: boolean;
+  photoMode?: "single";
 }
 export interface Room {
   code: string;

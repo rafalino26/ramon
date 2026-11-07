@@ -18,6 +18,7 @@ export default function RoomEditor({
   busy,
   onPublish,
   onRetake,
+  retakeCount = 1,
 }: {
   layout: LayoutInfo;
   images: (string | null)[];
@@ -26,6 +27,7 @@ export default function RoomEditor({
   busy: boolean;
   onPublish: (design: EditorDesign, pass: boolean) => Promise<void>;
   onRetake: () => void;
+  retakeCount?: number;
 }) {
   const [session, setSession] = useState(() => ({
     ...createSession(),
@@ -86,7 +88,9 @@ export default function RoomEditor({
             Save &amp; pass control
           </button>
           <button className="text-link" disabled={busy} onClick={onRetake}>
-            Retake the last pair
+            {retakeCount === 1
+              ? "Retake the last photo"
+              : "Retake the last pair"}
           </button>
         </div>
       )}
