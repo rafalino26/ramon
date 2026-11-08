@@ -423,6 +423,22 @@ test("camera reset cancels countdown and leaving the tab stops the stream", asyn
   await page.goto("/photobooth");
   await page.getByText("1 x 1", { exact: true }).click();
   await page.getByRole("button", { name: "Use camera" }).click();
+  await expect(page.getByRole("button", { name: "Capture (0/1)" })).toBeEnabled();
+  const video = page.locator("video");
+  await expect(video).toHaveCSS("transform", "matrix(-1, 0, 0, 1, 0, 0)");
+  await page.getByRole("button", { name: "Mirror camera", exact: true }).click();
+  await expect(video).toHaveCSS("transform", "none");
+  const streamId = await video.evaluate(el => ((el as HTMLVideoElement).srcObject as MediaStream).id);
+  await page.getByRole("button", { name: "Focus camera", exact: true }).click();
+  await expect(page.locator(".camera-focus-mode")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await page.getByRole("button", { name: "Exit camera focus", exact: true }).click();
+  await expect(page.locator(".camera-focus-mode")).toHaveCount(0);
+  await page.getByRole("button", { name: "Focus camera", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".camera-focus-mode")).toHaveCount(0);
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
+  expect(await video.evaluate(el => ((el as HTMLVideoElement).srcObject as MediaStream).id)).toBe(streamId);
   await expect(
     page.getByRole("button", { name: "Capture (0/1)" }),
   ).toBeEnabled();
@@ -490,4 +506,33 @@ test("camera reset cancels countdown and leaving the tab stops the stream", asyn
       return largest;
     });
   expect(largestChannelDifference).toBeLessThan(8);
+});
+
+test("quick captions, custom export names and image clipboard work together", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "canShare", { value: () => false, configurable: true });
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+      write: async (items: ClipboardItem[]) => {
+        document.documentElement.dataset.copyActivation = String(navigator.userActivation.isActive);
+        const blob = await items[0].getType("image/png");
+        document.documentElement.dataset.copyBytes = String(blob.size);
+      },
+    } });
+  });
+  await arrange(page);
+  await page.getByRole("button", { name: "Text", exact: true }).click();
+  await page.getByRole("button", { name: "Better together", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Caption", exact: true })).toHaveValue("Better together");
+  await page.getByRole("button", { name: "Today’s date", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Caption", exact: true })).not.toHaveValue("Better together");
+  await page.getByRole("textbox", { name: "File name", exact: true }).fill("Our memory.jpg");
+  await page.getByRole("button", { name: "Copy image", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Image copied" })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-copy-activation", "true");
+  expect(Number(await page.locator("html").getAttribute("data-copy-bytes"))).toBeGreaterThan(1000);
+  for (const format of ["PNG", "PDF"]) {
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name: format, exact: true }).click();
+    expect((await download).suggestedFilename()).toBe(`Our memory.${format.toLowerCase()}`);
+  }
 });

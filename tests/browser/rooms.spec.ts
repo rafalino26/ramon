@@ -746,6 +746,10 @@ test("two participants capture and edit together with automatic sync", async ({
       .getByRole("tab", { name: "Decorate together", exact: true })
       .click();
     await a.getByRole("button", { name: "Text", exact: true }).click();
+    await a.getByRole("button", { name: "Better together", exact: true }).click();
+    await expect(b.locator("[data-caption-text]")).toHaveText("Better together");
+    await a.getByRole("button", { name: "Undo design change", exact: true }).click();
+    await expect(b.locator("[data-caption-text]")).toHaveCount(0);
     await Promise.all([
       a.getByLabel("Caption", { exact: true }).fill("Together, from afar"),
       b.getByRole("button", { name: "Thin", exact: true }).click(),

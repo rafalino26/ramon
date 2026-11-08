@@ -769,3 +769,42 @@
     width: auto;
   }
 }
+.export-filename {
+  display: grid;
+  gap: 7px;
+  margin-block: 16px 12px;
+  color: #655274;
+  font-size: 13px;
+}
+.export-filename input {
+  width: 100%;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #faf7fd;
+  color: var(--ink);
+  font-size: 16px;
+}
+.copy-image-button {
+  width: 100%;
+  margin-bottom: 12px;
+}
+.quick-captions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block: 12px 16px;
+}
+.quick-captions button {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #faf7fd;
+  color: #7041b9;
+  font-size: 13px;
+}
+.quick-captions button:hover {
+  background: #eee3fb;
+}

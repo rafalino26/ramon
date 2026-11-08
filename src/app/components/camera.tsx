@@ -10,6 +10,7 @@ import {
   FiMaximize2,
   FiRefreshCw,
   FiRepeat,
+  FiMinimize2,
 } from "react-icons/fi";
 import { Flower, MiniScene } from "./MemoryArt";
 import { useMediaQuery } from "@/hooks/use-media-query";
@@ -79,6 +80,26 @@ export default function Camera({
   const [cameraReady, setCameraReady] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState("");
   const [actualFacing, setActualFacing] = useState("");
+  const [mirrorOverride, setMirrorOverride] = useState<boolean | null>(null);
+  const [focused, setFocused] = useState(false);
+  const focusButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!focused) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setFocused(false);
+        focusButtonRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", close);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", close);
+    };
+  }, [focused]);
 
   const previewAspectRatio = isWidescreen ? 16 / 9 : portrait ? 3 / 4 : 4 / 3;
 
@@ -93,7 +114,7 @@ export default function Camera({
   const totalSlots = getSlotCount(layout);
   const capturedCount = capturedImages.filter(Boolean).length;
   const isComplete = capturedCount === totalSlots && captureIndex === null;
-  const mirrored = (actualFacing || facingMode) === "user";
+  const mirrored = mirrorOverride ?? (actualFacing || facingMode) === "user";
   const relevantCameras = useMemo(() => {
     const pattern =
       facingMode === "user" ? /front|user|facetime/i : /back|rear|environment/i;
@@ -177,6 +198,7 @@ export default function Camera({
     setActiveDeviceIndex(null);
     setSelectedDevice("");
     setActualFacing("");
+    setMirrorOverride(null);
     setFacingMode((mode) => (mode === "user" ? "environment" : "user"));
   };
   const cycleNextCamera = () => {
@@ -263,6 +285,7 @@ export default function Camera({
     setActualFacing("");
     setTimer(0);
     setFilter("normal");
+    setMirrorOverride(null);
     setIsWidescreen(false);
   };
   const handleDeletePhoto = (index: number) => {
@@ -271,7 +294,7 @@ export default function Camera({
   };
 
   return (
-    <div>
+    <div className={focused ? "camera-focus-mode" : undefined}>
       {showRoll && (
         <div className="panel-heading">
           <span className="panel-kicker">A GOOD DAY TO MAKE A MEMORY</span>
@@ -293,6 +316,28 @@ export default function Camera({
         <div className="camera-column">
           <div className="camera-toolbar">
             <div className="camera-tools">
+              <button
+                type="button"
+                className="camera-tool"
+                disabled={disabled || isCapturing}
+                aria-label="Mirror camera"
+                aria-pressed={mirrored}
+                title="Mirror preview and captured photo"
+                onClick={() => setMirrorOverride(!mirrored)}
+              >
+                <FiRepeat /> <span>Mirror</span>
+              </button>
+              <button
+                ref={focusButtonRef}
+                type="button"
+                className="camera-tool"
+                aria-label={focused ? "Exit camera focus" : "Focus camera"}
+                aria-pressed={focused}
+                onClick={() => setFocused(value => !value)}
+              >
+                {focused ? <FiMinimize2 /> : <FiMaximize2 />}
+                <span>{focused ? "Exit focus" : "Focus"}</span>
+              </button>
               <button
                 type="button"
                 className="camera-tool"
@@ -473,7 +518,7 @@ export default function Camera({
               <>
                 <span className="camera-status">
                   <span className="live-dot" />{" "}
-                  {mirrored ? "Front camera" : "Back camera"}
+                  {(actualFacing || facingMode) === "user" ? "Front camera" : "Back camera"}
                 </span>
                 {["tl", "tr", "bl", "br"].map((corner) => (
                   <span

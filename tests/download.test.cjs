@@ -1,6 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { isAppleMobile, saveFile } = require("../.test-build/download");
+const { isAppleMobile, saveFile, exportFilename, copyImage } = require("../.test-build/download");
 const { setGlobal } = require("./helpers.cjs");
 
 test("iPad desktop user agent uses Apple handoff while a Mac does not", () => {
@@ -22,6 +22,24 @@ function environment(t, share) {
   setGlobal(t, "window", { setTimeout: () => 1 });
   return calls;
 }
+
+test("export filenames remove unsafe characters and replace existing extensions", () => {
+  assert.equal(exportFilename("Our moment.jpg", "pdf"), "Our moment.pdf");
+  assert.equal(exportFilename('a/b:c*?.png', "webp"), "a-b-c--.webp");
+  assert.equal(exportFilename("   ", "png"), "ramon-photobooth.png");
+});
+
+test("image copying starts in the click activation and reports unsupported browsers", async (t) => {
+  let copied;
+  setGlobal(t, "ClipboardItem", class { constructor(types) { this.types = types; } });
+  setGlobal(t, "navigator", { clipboard: { write: async (items) => { copied = items; } } });
+  const file = new File(["photo"], "photo.png", { type: "image/png" });
+  const pending = copyImage(file);
+  assert.equal(copied[0].types["image/png"], file);
+  await pending;
+  setGlobal(t, "navigator", {});
+  await assert.rejects(copyImage(file), /download the PNG/);
+});
 
 test("native share starts synchronously before any await loses user activation", async (t) => {
   let called = false;

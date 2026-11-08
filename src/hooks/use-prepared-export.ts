@@ -11,7 +11,7 @@ import {
   prepareWebpFile,
   type DownloadFormat,
 } from "@/lib/extra-exports";
-import { saveFile } from "@/lib/download";
+import { saveFile, copyImage, exportFilename } from "@/lib/download";
 import type { PhotoSlots } from "@/lib/photobooth-session";
 import type { EditorDesign } from "@/lib/editor-design";
 
@@ -146,7 +146,7 @@ export function usePreparedExport(
     prepared.revision === revision;
 
   const currentExtra = extra?.source === prepared?.files ? extra : null;
-  const download = async (format: DownloadFormat) => {
+  const download = async (format: DownloadFormat, name = "ramon-photobooth") => {
     if (!ready || saving.current) return;
     const file =
       format === "png" || format === "jpeg"
@@ -156,7 +156,8 @@ export function usePreparedExport(
     saving.current = true;
     setIsSaving(true);
     try {
-      await saveFile(file);
+      const filename = exportFilename(name, format === "jpeg" ? "jpg" : format);
+      await saveFile(new File([file], filename, { type: file.type }));
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -168,11 +169,28 @@ export function usePreparedExport(
       setIsSaving(false);
     }
   };
+  const copy = async () => {
+    if (!ready || saving.current) return false;
+    saving.current = true;
+    setIsSaving(true);
+    setError(null);
+    try {
+      await copyImage(prepared.files.png);
+      return true;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to copy this image.");
+      return false;
+    } finally {
+      saving.current = false;
+      setIsSaving(false);
+    }
+  };
   return {
     ready,
     isSaving,
     error,
     download,
+    copy,
     pdfReady: ready && !!currentExtra?.pdf,
     webpReady: ready && !!currentExtra?.webp,
     webpAvailable,

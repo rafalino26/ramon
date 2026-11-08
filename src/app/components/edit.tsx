@@ -33,6 +33,7 @@ import {
 } from "@/lib/editor-design";
 import type { StickerAsset } from "@/lib/stickers";
 import { usePreparedExport } from "@/hooks/use-prepared-export";
+import type { DownloadFormat } from "@/lib/extra-exports";
 import PhotostripPreview from "./photostrip";
 import { Flower } from "./MemoryArt";
 import StickerPanel from "./editor/StickerPanel";
@@ -75,12 +76,15 @@ export default function Edit({
   const { layout, images, design } = session;
   const [panel, setPanel] = useState<Panel>("frame");
   const [selected, setSelected] = useState<string | null>(null);
+  const [filename, setFilename] = useState("ramon-photobooth");
+  const [copied, setCopied] = useState(false);
   const preview = useRef<HTMLDivElement>(null);
   const {
     ready: exportReady,
     isSaving,
     error,
-    download,
+    download: saveDownload,
+    copy,
     retry,
     pdfReady,
     webpReady,
@@ -89,6 +93,10 @@ export default function Edit({
     retryPdf,
   } = usePreparedExport(preview, images, design, active);
   const ready = assetsReady && exportReady;
+  const download = (format: DownloadFormat) => saveDownload(format, filename);
+  useEffect(() => {
+    setCopied(false);
+  }, [images, design]);
   const change = (patch: Partial<EditorDesign>) =>
     dispatch({ type: "design", patch });
   const begin = () => dispatch({ type: "design-begin" });
@@ -421,6 +429,16 @@ export default function Edit({
               </button>
             </div>
           )}
+          <label className="export-filename">
+            File name
+            <input aria-label="File name" value={filename} maxLength={100}
+              placeholder="ramon-photobooth" onChange={event => setFilename(event.target.value)} />
+          </label>
+          <button type="button" className="button button-secondary copy-image-button"
+            disabled={!ready || isSaving} onClick={async () => setCopied(await copy())}>
+            <FiCopy /> Copy image
+          </button>
+          {copied && <p role="status">Image copied. Paste it into your chat or document.</p>}
           <div className="download-actions">
             <button
               type="button"

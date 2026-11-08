@@ -311,6 +311,20 @@ export function TextPanel({ design, onChange, onBegin, onEnd }: PanelProps) {
   return (
     <section>
       <h3>A few words to remember</h3>
+      <div className="quick-captions" aria-label="Quick captions">
+        {["Our little moment", "Better together", "A day to remember"].map(text => (
+          <button type="button" key={text} onClick={() => update({ text })}>
+            {text}
+          </button>
+        ))}
+        <button type="button" onClick={() => update({
+          text: new Intl.DateTimeFormat(undefined, {
+            day: "numeric", month: "short", year: "numeric",
+          }).format(new Date()),
+        })}>
+          Today’s date
+        </button>
+      </div>
       <label className="caption-field">
         Caption
         <input

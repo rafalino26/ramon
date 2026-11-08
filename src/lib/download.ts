@@ -22,6 +22,23 @@ export function downloadFile(file: File) {
   }
 }
 
+export function exportFilename(name: string, extension: string) {
+  const clean = name.trim()
+    .replace(/\.(png|jpe?g|pdf|webp)$/i, "")
+    // Control characters are invalid in filenames on supported desktop systems.
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
+    .slice(0, 100)
+    .replace(/[. ]+$/g, "");
+  return `${clean || "ramon-photobooth"}.${extension}`;
+}
+
+export async function copyImage(file: File) {
+  if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+    throw new Error("Image copying is unavailable here. Please download the PNG instead.");
+  }
+  await navigator.clipboard.write([new ClipboardItem({ "image/png": file })]);
+}
+
 /** Invoke directly from the click handler, using a file prepared before the click. */
 export async function saveFile(file: File): Promise<void> {
   if (

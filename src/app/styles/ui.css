@@ -1173,6 +1173,7 @@ svg {
 }
 .camera-toolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: space-between;
   align-items: center;
@@ -1180,6 +1181,7 @@ svg {
 }
 .camera-tools {
   display: flex;
+  flex-wrap: wrap;
   gap: 7px;
 }
 .camera-tool {
@@ -2397,6 +2399,9 @@ svg {
 }
 
 @media (max-width: 380px) {
+  .camera-viewport[data-view="portrait"] {
+    width: min(100%, max(120px, calc((100svh - 365px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) * 0.75)));
+  }
   .page-width {
     width: calc(100% - 28px);
   }
@@ -2628,6 +2633,42 @@ svg {
     animation: none !important;
     transition: none !important;
   }
+}
+
+.camera-tool[aria-pressed="true"] {
+  background: #eee3fb;
+  color: #7041b9;
+  border-color: #c6a7eb;
+}
+
+.camera-focus-mode {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: #faf7fd;
+}
+.camera-focus-mode > .panel-heading,
+.camera-focus-mode .camera-roll {
+  display: none;
+}
+.camera-focus-mode .camera-workspace {
+  display: block;
+  max-width: 900px;
+  margin-inline: auto;
+}
+.camera-focus-mode .camera-viewport {
+  width: 100%;
+  max-width: min(100%, 100vh);
+  margin-inline: auto;
+}
+.camera-focus-mode .camera-tools {
+  flex-wrap: wrap;
+}
+.camera-focus-mode .camera-tool span {
+  display: inline;
 }
 
 .layout-helper,
