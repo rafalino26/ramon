@@ -1,5 +1,7 @@
 import { test, expect, devices, type BrowserContext } from "@playwright/test";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { PDFDocument } from "pdf-lib";
 import type { RoomState } from "../../src/lib/room-client";
 import { layouts, getSlotCount } from "../../src/lib/layout";
 import { applyDesignChanges, roomDesign } from "../../src/lib/room-design";
@@ -434,6 +436,16 @@ test("two participants capture and edit together with automatic sync", async ({
     });
   };
   try {
+    await Promise.all(
+      [host, guest].map((context) =>
+        context.addInitScript(() =>
+          Object.defineProperty(navigator, "canShare", {
+            value: () => false,
+            configurable: true,
+          }),
+        ),
+      ),
+    );
     if (!process.env.RAMON_LIVE_ROOM_TEST) {
       await install(host, hostId);
       await install(guest, guestId);
@@ -827,6 +839,17 @@ test("two participants capture and edit together with automatic sync", async ({
       path: info.outputPath("editing-together.png"),
       fullPage: true,
     });
+    await expect(
+      a.getByRole("button", { name: "PDF", exact: true }),
+    ).toBeEnabled({ timeout: 15000 });
+    const pdfPending = a.waitForEvent("download");
+    await a.getByRole("button", { name: "PDF", exact: true }).click();
+    const pdfDownload = await pdfPending;
+    expect(pdfDownload.suggestedFilename()).toBe("ramon-photobooth.pdf");
+    const pdf = await PDFDocument.load(
+      await readFile((await pdfDownload.path())!),
+    );
+    expect(pdf.getPageCount()).toBe(1);
     await b
       .getByRole("button", { name: "Retake the last photo", exact: true })
       .click();

@@ -5,8 +5,12 @@ import {
   prepareExport,
   readPreviewGeometry,
   type ExportFiles,
-  type ExportFormat,
 } from "@/lib/export";
+import {
+  preparePdfFile,
+  prepareWebpFile,
+  type DownloadFormat,
+} from "@/lib/extra-exports";
 import { saveFile } from "@/lib/download";
 import type { PhotoSlots } from "@/lib/photobooth-session";
 import type { EditorDesign } from "@/lib/editor-design";
@@ -27,6 +31,14 @@ export function usePreparedExport(
   const [isSaving, setIsSaving] = useState(false);
   const saving = useRef(false);
   const [revision, setRevision] = useState(0);
+  const [extraRevision, setExtraRevision] = useState(0);
+  const [webpAvailable, setWebpAvailable] = useState(false);
+  const [extra, setExtra] = useState<{
+    source: ExportFiles;
+    pdf?: File;
+    webp?: File;
+    pdfError?: string;
+  } | null>(null);
 
   useEffect(() => {
     const element = preview.current;
@@ -80,6 +92,51 @@ export function usePreparedExport(
     };
   }, [preview, images, design, revision, enabled]);
 
+  useEffect(() => {
+    if (!prepared || !enabled) {
+      setExtra(null);
+      return;
+    }
+    const controller = new AbortController();
+    const source = prepared.files;
+    setExtra({ source });
+    // Additional formats prepare independently, so PNG/JPG can be saved first.
+    void preparePdfFile(source.jpeg, controller.signal)
+      .then((pdf) => {
+        if (!controller.signal.aborted)
+          setExtra((previous) =>
+            previous?.source === source ? { ...previous, pdf } : previous,
+          );
+      })
+      .catch((cause) => {
+        if (!controller.signal.aborted)
+          setExtra((previous) =>
+            previous?.source === source
+              ? {
+                  ...previous,
+                  pdfError:
+                    cause instanceof Error
+                      ? cause.message
+                      : "PDF could not be prepared.",
+                }
+              : previous,
+          );
+      });
+    void prepareWebpFile(source.png, controller.signal)
+      .then((webp) => {
+        if (webp && !controller.signal.aborted) {
+          setWebpAvailable(true);
+          setExtra((previous) =>
+            previous?.source === source ? { ...previous, webp } : previous,
+          );
+        }
+      })
+      .catch(() => {
+        /* Optional encoders may be unavailable in this browser. */
+      });
+    return () => controller.abort();
+  }, [prepared, enabled, extraRevision]);
+
   // Identity checks prevent downloading the previous frame during an effect transition.
   const ready =
     enabled &&
@@ -88,12 +145,18 @@ export function usePreparedExport(
     prepared.design === design &&
     prepared.revision === revision;
 
-  const download = async (format: ExportFormat) => {
+  const currentExtra = extra?.source === prepared?.files ? extra : null;
+  const download = async (format: DownloadFormat) => {
     if (!ready || saving.current) return;
+    const file =
+      format === "png" || format === "jpeg"
+        ? prepared.files[format]
+        : currentExtra?.[format];
+    if (!file) return;
     saving.current = true;
     setIsSaving(true);
     try {
-      await saveFile(prepared.files[format]);
+      await saveFile(file);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -110,6 +173,11 @@ export function usePreparedExport(
     isSaving,
     error,
     download,
+    pdfReady: ready && !!currentExtra?.pdf,
+    webpReady: ready && !!currentExtra?.webp,
+    webpAvailable,
+    pdfError: ready ? currentExtra?.pdfError : undefined,
+    retryPdf: () => setExtraRevision((value) => value + 1),
     retry: () => setRevision((value) => value + 1),
   };
 }

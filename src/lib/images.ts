@@ -56,13 +56,14 @@ export function loadImage(
 export function canvasToBlob(
   canvas: HTMLCanvasElement,
   type: string,
+  quality = type === "image/jpeg" ? 0.92 : undefined,
 ): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) =>
         blob ? resolve(blob) : reject(new Error("Unable to encode the image.")),
       type,
-      type === "image/jpeg" ? 0.92 : undefined,
+      quality,
     );
   });
 }

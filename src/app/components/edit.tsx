@@ -82,6 +82,11 @@ export default function Edit({
     error,
     download,
     retry,
+    pdfReady,
+    webpReady,
+    webpAvailable,
+    pdfError,
+    retryPdf,
   } = usePreparedExport(preview, images, design, active);
   const ready = assetsReady && exportReady;
   const change = (patch: Partial<EditorDesign>) =>
@@ -433,7 +438,41 @@ export default function Edit({
             >
               <FiDownload /> JPG
             </button>
+            <button
+              type="button"
+              className="button button-secondary"
+              disabled={!ready || !pdfReady || isSaving}
+              aria-busy={ready && !pdfReady && !pdfError}
+              onClick={() => download("pdf")}
+            >
+              <FiDownload /> PDF
+            </button>
+            {webpAvailable && (
+              <button
+                type="button"
+                className="button button-secondary"
+                disabled={!ready || !webpReady || isSaving}
+                onClick={() => download("webp")}
+              >
+                <FiDownload /> WebP
+              </button>
+            )}
           </div>
+          {pdfError && (
+            <div className="notice-error" role="alert">
+              {pdfError}
+              <button type="button" onClick={retryPdf}>
+                Retry PDF
+              </button>
+            </div>
+          )}
+          {ready && !pdfReady && !pdfError && (
+            <p role="status">Preparing PDF…</p>
+          )}
+          <p>
+            PDF fits your design on one A4 page. Orientation follows your
+            layout.
+          </p>
           <p>
             Stickers, filters and captions are included. Save before you leave.
           </p>

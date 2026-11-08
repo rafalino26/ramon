@@ -15,6 +15,7 @@
     "@supabase/supabase-js": "^2.119.0",
     "heic2any": "^0.0.4",
     "next": "^15.5.29",
+    "pdf-lib": "^1.17.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-icons": "^5.5.0",

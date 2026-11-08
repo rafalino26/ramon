@@ -1788,6 +1788,9 @@ svg {
   gap: 10px;
   margin-top: 15px;
 }
+.download-actions > button:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
 .save-section > p {
   font-size: 10px;
   color: #b3a0bd;

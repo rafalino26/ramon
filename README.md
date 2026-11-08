@@ -1,6 +1,6 @@
 # Ramon
 
-Photobooth berbasis browser dengan Next.js 15, React 19, TypeScript, dan Tailwind CSS 4. Pilih layout, gunakan kamera atau unggah foto, tambahkan bingkai, filter, stiker, dan caption, lalu simpan PNG atau JPG.
+Photobooth berbasis browser dengan Next.js 15, React 19, TypeScript, dan Tailwind CSS 4. Pilih layout, gunakan kamera atau unggah foto, tambahkan bingkai, filter, stiker, dan caption, lalu simpan PNG, JPG, PDF, atau WebP jika browser mendukung encoding-nya.
 
 UI lavender dengan layout yang menyesuaikan perangkat: kamera portrait di HP, area kerja berdampingan di tablet/desktop, serta kontrol warna native. Rincian ada di [catatan desain UI](docs/UI-REDESIGN.md).
 
@@ -48,6 +48,7 @@ Browser test menjalankan build produksi di `http://127.0.0.1:3100`. Jangan menja
 - HEIC dicoba melalui decoder native terlebih dahulu; `heic2any` dimuat hanya sebagai fallback.
 - Ekspor mengikuti ukuran/crop preview dan dibatasi 4 juta piksel dengan sisi maksimal 4096. PNG/JPG disiapkan sebelum tombol simpan aktif, sehingga native Share dapat dipanggil langsung dari klik.
 - iOS/iPadOS menggunakan file sharing jika tersedia; browser lain atau perangkat tanpa dukungan file sharing menggunakan download biasa.
+- PDF memakai hasil render JPG pada satu halaman A4, dengan orientasi otomatis dan proporsi desain dipertahankan. WebP mempertahankan transparansi PNG dan hanya ditampilkan setelah encoder browser menghasilkan MIME WebP yang benar. Kedua format disiapkan terpisah sehingga PNG/JPG tetap dapat disimpan saat format tambahan diproses.
 - Batal dari native Share tidak memicu download tambahan. Gambar yang gagal diproses tidak diganti file kosong.
 
 Lihat [audit refactor](docs/REFACTOR-AUDIT.md) untuk temuan, arsitektur, riwayat bug, dan checklist pengujian iPad fisik.

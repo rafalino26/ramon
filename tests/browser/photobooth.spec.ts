@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { PDFDocument, PDFDict, PDFName, PDFRawStream } from "pdf-lib";
 
 const photo = (color: string) => ({
   name: "photo.svg",
@@ -275,7 +276,7 @@ test("replacing a layout releases its photo object URLs", async ({ page }) => {
   );
 });
 
-test("iPad native share receives a prepared image synchronously and cancel does not download", async ({
+test("iPad native share receives prepared image and PDF files synchronously without downloading after cancel", async ({
   page,
 }, info) => {
   test.skip(!info.project.name.startsWith("webkit"));
@@ -300,19 +301,116 @@ test("iPad native share receives a prepared image synchronously and cancel does 
     downloads.push(download.suggestedFilename()),
   );
   await arrange(page, "1 x 1");
-  await page.getByRole("button", { name: "PNG", exact: true }).click();
-  await expect(page.locator("html")).toHaveAttribute(
-    "data-shared-file",
-    "image/png",
-  );
-  await expect(page.locator("html")).toHaveAttribute(
-    "data-share-activation",
-    "true",
-  );
-  await expect(
-    page.getByRole("button", { name: "PNG", exact: true }),
-  ).toBeEnabled();
+  for (const [button, mime] of [
+    ["PNG", "image/png"],
+    ["PDF", "application/pdf"],
+  ]) {
+    await expect(
+      page.getByRole("button", { name: button, exact: true }),
+    ).toBeEnabled({ timeout: 15000 });
+    await page.getByRole("button", { name: button, exact: true }).click();
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-shared-file",
+      mime,
+    );
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-share-activation",
+      "true",
+    );
+    await expect(
+      page.getByRole("button", { name: button, exact: true }),
+    ).toBeEnabled();
+  }
   expect(downloads).toEqual([]);
+});
+
+for (const layout of ["2 x 2", "4 x 1", "1 x 4"]) {
+  test(`PDF preserves all rendered artwork on an oriented A4 page for ${layout}`, async ({
+    page,
+  }, info) => {
+    await page.addInitScript(() =>
+      Object.defineProperty(navigator, "canShare", {
+        value: () => false,
+        configurable: true,
+      }),
+    );
+    await arrange(page, layout);
+    await page.getByRole("button", { name: "Text", exact: true }).click();
+    await page.getByLabel("Caption", { exact: true }).fill("Our little memory");
+    await page.getByLabel("Caption", { exact: true }).press("Tab");
+    await page.getByRole("button", { name: "Stickers", exact: true }).click();
+    await page.locator(".sticker-catalog button").first().click();
+    if (layout === "1 x 4")
+      await page.getByLabel("Sticker size", { exact: true }).press("Home");
+    await expect(
+      page.getByRole("button", { name: "PDF", exact: true }),
+    ).toBeEnabled({ timeout: 15000 });
+    const jpegPending = page.waitForEvent("download");
+    await page.getByRole("button", { name: "JPG", exact: true }).click();
+    const jpeg = await readFile((await (await jpegPending).path())!);
+    const pending = page.waitForEvent("download");
+    await page.getByRole("button", { name: "PDF", exact: true }).click();
+    const download = await pending;
+    expect(download.suggestedFilename()).toBe("ramon-photobooth.pdf");
+    const path = info.outputPath("photobooth.pdf");
+    await download.saveAs(path);
+    const document = await PDFDocument.load(await readFile(path));
+    expect(document.getPageCount()).toBe(1);
+    const pageSize = document.getPage(0).getSize();
+    expect(pageSize.width > pageSize.height).toBe(layout === "1 x 4");
+    const resources = document
+      .getPage(0)
+      .node.Resources()!
+      .lookup(PDFName.of("XObject"), PDFDict);
+    const images = resources.values().map((value) => {
+      const object = document.context.lookup(value);
+      if (!(object instanceof PDFRawStream))
+        throw new Error("Expected an embedded image stream.");
+      return object;
+    });
+    expect(images).toHaveLength(1);
+    expect(Buffer.from(images[0].getContents()).equals(jpeg)).toBe(true);
+  });
+}
+
+test("WebP download has real WebP bytes, photo pixels, and transparent frame corners", async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    Object.defineProperty(navigator, "canShare", {
+      value: () => false,
+      configurable: true,
+    }),
+  );
+  const supported = await page.evaluate(
+    () =>
+      new Promise<boolean>((resolve) => {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 1;
+        canvas.toBlob(
+          (blob) => resolve(blob?.type === "image/webp"),
+          "image/webp",
+        );
+      }),
+  );
+  test.skip(!supported, "This browser does not encode WebP.");
+  await arrange(page, "1 x 1");
+  await expect(
+    page.getByRole("button", { name: "WebP", exact: true }),
+  ).toBeEnabled({ timeout: 15000 });
+  const pending = page.waitForEvent("download");
+  await page.getByRole("button", { name: "WebP", exact: true }).click();
+  const download = await pending;
+  expect(download.suggestedFilename()).toBe("ramon-photobooth.webp");
+  const path = (await download.path())!,
+    bytes = await readFile(path);
+  expect(bytes.toString("ascii", 0, 4)).toBe("RIFF");
+  expect(bytes.toString("ascii", 8, 12)).toBe("WEBP");
+  const center = await readPixels(page, path, "image/webp");
+  expect(center.pixel[0]).toBeGreaterThan(235);
+  expect(center.pixel[1]).toBeLessThan(25);
+  const corner = await readPixels(page, path, "image/webp", 0, 0);
+  expect(corner.pixel[3]).toBe(0);
 });
 
 test("camera reset cancels countdown and leaving the tab stops the stream", async ({
