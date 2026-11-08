@@ -4,13 +4,12 @@ import {
   createRoomClient,
   roomIdentity,
   roomRpc,
-  saveRoom,
   type Room,
   type RoomClient,
-  type RoomState,
 } from "@/lib/room-client";
 import { layouts, getSlotCount, getCells } from "@/lib/layout";
 import { createDesign, type EditorDesign } from "@/lib/editor-design";
+import { mapChangeSources, type DesignChange } from "@/lib/room-design";
 import { composeRoomPhoto } from "@/lib/room-collage";
 import RoomCamera from "./RoomCamera";
 import RoomEditor from "./RoomEditor";
@@ -32,6 +31,9 @@ export default function Together() {
   const [confirmLayout, setConfirmLayout] = useState(false);
   const locked = useRef(false);
   const assets = useRef(new Map<string, string>());
+  const sourcePaths = useRef(new Map<string, string>());
+  const uploads = useRef(new Map<string, Promise<string>>());
+  const [live, setLive] = useState(false);
   const [preparation, setPrepared] = useState<{
     key: string;
     photos: (string | null)[];
@@ -41,7 +43,7 @@ export default function Together() {
     if (
       !current.current ||
       current.current.code !== next.code ||
-      next.revision >= current.current.revision
+      next.revision > current.current.revision
     ) {
       current.current = next;
       setRoom(next);
@@ -90,6 +92,7 @@ export default function Together() {
   useEffect(() => {
     if (!roomCode) return;
     let active = true;
+    let connected = false;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       if (!locked.current) {
@@ -108,12 +111,57 @@ export default function Together() {
             );
         }
       }
-      if (active) timer = setTimeout(poll, document.hidden ? 15000 : 2000);
+      if (active)
+        timer = setTimeout(poll, document.hidden || connected ? 15000 : 2000);
     };
+    const api = client.current!;
+    const refresh = () => {
+      if (document.hidden) return;
+      void roomRpc(api, "ramon_get_room", { room_code: roomCode })
+        .then((next) => {
+          if (active && current.current?.code === next.code) accept(next);
+        })
+        .catch(() => {});
+    };
+    const channel = api
+      .channel(`ramon:${roomCode}`, {
+        config: { postgres_changes_options: { wait: true } },
+      })
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "ramon_rooms",
+          filter: `code=eq.${roomCode}`,
+        },
+        (payload) => {
+          const next = payload.new as Room;
+          if (
+            active &&
+            current.current?.code === next.code &&
+            Array.isArray(next.members) &&
+            next.state
+          )
+            accept(next);
+        },
+      )
+      .subscribe((status) => {
+        if (!active) return;
+        connected = status === "SUBSCRIBED";
+        setLive(connected);
+        // Re-read after every successful (re)subscription to close event gaps.
+        if (connected) refresh();
+      });
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("online", refresh);
     timer = setTimeout(poll, 2000);
     return () => {
       active = false;
       clearTimeout(timer);
+      void api.removeChannel(channel);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("online", refresh);
     };
   }, [roomCode, accept]); // Revisions do not restart the polling loop.
   const resolveAsset = useCallback(async (path: string) => {
@@ -129,13 +177,15 @@ export default function Together() {
     if (cached) return cached;
     const url = URL.createObjectURL(data);
     assets.current.set(path, url);
+    sourcePaths.current.set(url, path);
     return url;
   }, []);
   const layout =
     layouts.find((item) => item.id === room?.state.layout) ?? layouts[6];
   const photoKey = JSON.stringify(room?.state.photos);
   const portraitsPerSlot = room?.state.photoMode === "single" ? 1 : 2;
-  const designKey = JSON.stringify(room?.state.design);
+  const designKey =
+    room?.state.phase === "capture" ? JSON.stringify(room.state.design) : "";
   const preparationKey = JSON.stringify([
     room?.state.phase,
     layout.id,
@@ -143,8 +193,7 @@ export default function Together() {
     photoKey,
     designKey,
   ]);
-  // Control and shared styling may arrive in the same update. Never mount a
-  // new controller's editor with assets prepared for the previous design.
+  // Photo preparation stays stable while collaborators edit the design.
   const prepared = preparation?.key === preparationKey ? preparation : null;
   useEffect(() => {
     if (
@@ -182,7 +231,10 @@ export default function Together() {
         owned.push(url);
         photos.push(url);
       }
-      const design = room.state.design ?? createDesign();
+      const design =
+        room.state.phase === "capture"
+          ? (room.state.design ?? createDesign())
+          : createDesign();
       const stickers = await Promise.all(
         design.stickers.map(async (sticker) => ({
           ...sticker,
@@ -208,8 +260,6 @@ export default function Together() {
     // Only shared assets/layout/design require recomposition, not controller/presence updates.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preparationKey, layout, resolveAsset]);
-  const update = async (state: RoomState, editor = current.current!.editor) =>
-    accept(await saveRoom(client.current!, current.current!, state, editor));
   const layoutAction = async (
     action: "continue" | "change" | "select" | "start",
     layoutId?: string,
@@ -234,45 +284,65 @@ export default function Together() {
     );
   };
   useEffect(() => setConfirmLayout(false), [room?.state.phase]);
-  const upload = async (blob: Blob) => {
-    const path = `${current.current!.code}/${user}/${crypto.randomUUID()}.${blob.type === "image/png" ? "png" : "jpg"}`;
-    const { error } = await client
-      .current!.storage.from("room-photos")
-      .upload(path, blob, { contentType: blob.type, upsert: false });
-    if (error) throw error;
-    return path;
-  };
-  const publish = async (design: EditorDesign, pass: boolean) =>
-    run(async () => {
-      const stickers = [];
-      for (const sticker of design.stickers) {
-        let src = sticker.src;
-        if (!src.startsWith("/stickers/")) {
-          const existing = [...assets.current.entries()].find(
-            ([, url]) => url === src,
-          )?.[0];
-          if (existing) src = existing;
-          else {
-            const blob = await (await fetch(src)).blob();
-            src = await upload(blob);
-            assets.current.set(src, URL.createObjectURL(blob));
-          }
+  const upload = useCallback(
+    async (blob: Blob) => {
+      const path = `${current.current!.code}/${user}/${crypto.randomUUID()}.${blob.type === "image/png" ? "png" : "jpg"}`;
+      const { error } = await client
+        .current!.storage.from("room-photos")
+        .upload(path, blob, { contentType: blob.type, upsert: false });
+      if (error) throw error;
+      return path;
+    },
+    [user],
+  );
+  const canonicalSource = useCallback(
+    (src: string) => sourcePaths.current.get(src) ?? src,
+    [],
+  );
+  const persistChanges = useCallback(
+    async (changes: DesignChange[]) => {
+      const sources = new Set<string>();
+      for (const change of changes) {
+        if (change.path[0] !== "stickers") continue;
+        for (const value of [change.value, change.expected]) {
+          const src =
+            typeof value === "string" && change.path[2] === "src"
+              ? value
+              : value && typeof value === "object" && "src" in value
+                ? String(value.src)
+                : "";
+          if (src.startsWith("blob:") && canonicalSource(src) === src)
+            sources.add(src);
         }
-        stickers.push({ ...sticker, src });
       }
-      const nextEditor = pass
-        ? current.current!.members.find((id) => id !== user)!
-        : user;
-      await update(
-        { ...current.current!.state, design: { ...design, stickers } },
-        nextEditor,
-      );
-      setNotice(
-        pass
-          ? "Control passed to your partner."
-          : "Design shared with your partner.",
-      );
-    });
+      for (const src of sources) {
+        let pending = uploads.current.get(src);
+        if (!pending) {
+          pending = (async () => {
+            const blob = await (await fetch(src)).blob();
+            const path = await upload(blob);
+            const url = URL.createObjectURL(blob);
+            assets.current.set(path, url);
+            sourcePaths.current.set(url, path);
+            sourcePaths.current.set(src, path);
+            return path;
+          })();
+          uploads.current.set(src, pending);
+        }
+        try {
+          await pending;
+        } catch (cause) {
+          uploads.current.delete(src);
+          throw cause;
+        }
+      }
+      return changes.map((change) => ({
+        ...mapChangeSources(change, canonicalSource),
+        before: null,
+      }));
+    },
+    [canonicalSource, upload],
+  );
   const join = (create: boolean) =>
     run(async () => {
       if (!entryReady || (create && inviteCode !== null))
@@ -291,7 +361,6 @@ export default function Together() {
       sessionStorage.setItem("ramon-room", next.code);
       accept(next);
     });
-  const mine = room?.editor === user;
   const other = room?.members.find((id) => id !== user);
   const sharedCount = room?.state.photos.length ?? 0;
   const submitted =
@@ -426,8 +495,8 @@ export default function Together() {
             >
               <h2 id="change-layout-title">Choose a different layout?</h2>
               <p>
-                Photos and unshared edits will be cleared for both of you. Your
-                last shared styling will be kept.
+                Photos and edits still syncing will be cleared for both of you.
+                Your latest synced styling will be kept.
               </p>
               <div className="room-actions">
                 <button
@@ -595,29 +664,28 @@ export default function Together() {
           {room.state.phase === "edit" &&
             (prepared ? (
               <RoomEditor
-                key={room.editor + photoKey}
+                key={room.code + (room.state.captureId ?? "legacy") + photoKey}
                 layout={layout}
                 images={prepared.photos}
-                design={prepared.design}
-                controller={!!mine}
+                room={room}
+                client={client.current!}
                 busy={busy}
-                onPublish={publish}
-                onRetake={() => {
-                  void run(() =>
-                    update(
-                      {
-                        ...current.current!.state,
-                        phase: "capture",
-                        photos: current.current!.state.photos.slice(
-                          0,
-                          -portraitsPerSlot,
-                        ),
-                        captureId: crypto.randomUUID(),
-                      },
-                      current.current!.members[0],
-                    ),
-                  );
-                }}
+                onRoom={accept}
+                canonicalSource={canonicalSource}
+                persistChanges={persistChanges}
+                resolveAsset={resolveAsset}
+                live={live}
+                onRetake={() =>
+                  run(async () => {
+                    const snapshot = current.current!;
+                    accept(
+                      await roomRpc(client.current!, "ramon_retake_photo", {
+                        room_code: snapshot.code,
+                        expected_revision: snapshot.revision,
+                      }),
+                    );
+                  })
+                }
                 retakeCount={portraitsPerSlot}
               />
             ) : (

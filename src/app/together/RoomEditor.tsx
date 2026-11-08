@@ -1,105 +1,156 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Edit from "../components/edit";
-import {
-  createSession,
-  sessionReducer,
-  type SessionAction,
-} from "@/lib/photobooth-session";
+import { createSession } from "@/lib/photobooth-session";
 import type { LayoutInfo } from "@/lib/layout";
-import type { EditorDesign } from "@/lib/editor-design";
+import type { Room, RoomClient } from "@/lib/room-client";
+import type { DesignChange } from "@/lib/room-design";
 import { usePhotoUrls } from "@/hooks/use-photo-urls";
+import { useRoomDesign } from "@/hooks/use-room-design";
 
 export default function RoomEditor({
   layout,
   images,
-  design,
-  controller,
+  room,
+  client,
   busy,
-  onPublish,
+  onRoom,
+  canonicalSource,
+  persistChanges,
+  resolveAsset,
   onRetake,
+  live,
   retakeCount = 1,
 }: {
   layout: LayoutInfo;
   images: (string | null)[];
-  design: EditorDesign;
-  controller: boolean;
+  room: Room;
+  client: RoomClient;
   busy: boolean;
-  onPublish: (design: EditorDesign, pass: boolean) => Promise<void>;
-  onRetake: () => void;
+  live: boolean;
+  onRoom: (room: Room) => void;
+  canonicalSource: (source: string) => string;
+  persistChanges: (changes: DesignChange[]) => Promise<DesignChange[]>;
+  resolveAsset: (source: string) => Promise<string>;
+  onRetake: () => Promise<void>;
   retakeCount?: number;
 }) {
-  const [session, setSession] = useState(() => ({
-    ...createSession(),
-    layout,
-    images,
-    design,
-    hasSelectedLayout: true,
-  }));
-  useEffect(() => {
-    if (!controller)
-      setSession({
-        ...createSession(),
-        layout,
-        images,
-        design,
-        hasSelectedLayout: true,
-      });
-  }, [controller, layout, images, design]);
-  const sources = useMemo(
-    () =>
-      [
-        session.design,
-        ...session.past,
-        ...session.future,
-        ...(session.transaction ? [session.transaction] : []),
-      ].flatMap((value) => value.stickers.map((sticker) => sticker.src)),
-    [session],
+  const collaboration = useRoomDesign({
+    room,
+    client,
+    onRoom,
+    canonicalSource,
+    persistChanges,
+  });
+  const createSource = usePhotoUrls(collaboration.sources);
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const [assetError, setAssetError] = useState("");
+  const [retaking, setRetaking] = useState(false);
+  const sourcesKey = JSON.stringify(
+    collaboration.design.stickers.map((sticker) => sticker.src),
   );
-  const createSource = usePhotoUrls(sources);
-  const dispatch = (action: SessionAction) => {
-    if (controller && !busy)
-      setSession((previous) => ({
-        ...sessionReducer(previous, action),
-        images,
-      }));
-  };
+  useEffect(() => {
+    let active = true;
+    let retry: ReturnType<typeof setTimeout>;
+    const sources = JSON.parse(sourcesKey) as string[];
+    const load = () =>
+      void Promise.all(
+        sources
+          .filter(
+            (source) =>
+              !source.startsWith("/stickers/") && !source.startsWith("blob:"),
+          )
+          .map(async (source) => [source, await resolveAsset(source)] as const),
+      )
+        .then((entries) => {
+          if (active) {
+            setUrls((previous) => ({
+              ...previous,
+              ...Object.fromEntries(entries),
+            }));
+            setAssetError("");
+          }
+        })
+        .catch((cause) => {
+          if (active) {
+            setAssetError(cause.message);
+            retry = setTimeout(load, 3000);
+          }
+        });
+    load();
+    return () => {
+      active = false;
+      clearTimeout(retry);
+    };
+  }, [sourcesKey, resolveAsset]);
+  const design = useMemo(
+    () => ({
+      ...collaboration.design,
+      stickers: collaboration.design.stickers.map((sticker) => ({
+        ...sticker,
+        src: urls[sticker.src] ?? sticker.src,
+      })),
+    }),
+    [collaboration.design, urls],
+  );
+  const assetsReady = design.stickers.every(
+    (sticker) =>
+      sticker.src.startsWith("/stickers/") || sticker.src.startsWith("blob:"),
+  );
   return (
     <>
       <div className="room-note">
-        {controller
-          ? "You have editing control. Share your changes when ready, or save and pass control to your partner."
-          : "Your partner is editing. Their shared changes appear here. You can download the current shared design."}
+        <p>Make it yours, together. Both of you can edit this photobooth.</p>
+        <p role="status" data-testid="design-sync-status">
+          {live ? "Live" : "Connecting…"} · {collaboration.status}
+        </p>
+        {(collaboration.syncError || assetError) && (
+          <p role="alert" className="notice-error">
+            {collaboration.syncError || assetError}
+          </p>
+        )}
+        {collaboration.syncError && (
+          <button className="text-link" onClick={collaboration.retry}>
+            Retry sync
+          </button>
+        )}
       </div>
-      {controller && (
-        <div className="room-actions">
-          <button
-            className="button button-primary"
-            disabled={busy || !!session.transaction}
-            onClick={() => void onPublish(session.design, false)}
-          >
-            Share design changes
-          </button>
-          <button
-            className="button button-secondary"
-            disabled={busy || !!session.transaction}
-            onClick={() => void onPublish(session.design, true)}
-          >
-            Save &amp; pass control
-          </button>
-          <button className="text-link" disabled={busy} onClick={onRetake}>
-            {retakeCount === 1
-              ? "Retake the last photo"
-              : "Retake the last pair"}
-          </button>
-        </div>
-      )}
+      <div className="room-actions">
+        <button
+          className="text-link"
+          disabled={busy || retaking}
+          onClick={async () => {
+            setRetaking(true);
+            try {
+              await collaboration.flush();
+              await onRetake();
+            } catch {
+              /* The sync status displays pending writes and their error. */
+            } finally {
+              setRetaking(false);
+            }
+          }}
+        >
+          {retakeCount === 1 ? "Retake the last photo" : "Retake the last pair"}
+        </button>
+      </div>
       <Edit
-        session={session}
-        dispatch={dispatch}
+        session={{
+          ...createSession(),
+          layout,
+          images,
+          design,
+          hasSelectedLayout: true,
+        }}
+        dispatch={collaboration.dispatch}
+        history={{
+          canUndo: collaboration.canUndo,
+          canRedo: collaboration.canRedo,
+        }}
+        assetsReady={assetsReady}
         createStickerSource={createSource}
         onChooseLayout={() => {}}
-        readOnly={!controller || busy}
+        readOnly={busy || retaking}
       />
     </>
   );

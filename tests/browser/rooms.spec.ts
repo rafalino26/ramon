@@ -2,11 +2,12 @@ import { test, expect, devices, type BrowserContext } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import type { RoomState } from "../../src/lib/room-client";
 import { layouts, getSlotCount } from "../../src/lib/layout";
+import { applyDesignChanges, roomDesign } from "../../src/lib/room-design";
 
-test("invite guests fill single-photo slots in either order and pass editing control", async ({
+test("two participants capture and edit together with automatic sync", async ({
   browser,
 }, info) => {
-  test.setTimeout(90_000);
+  test.setTimeout(120_000);
   const hostId: string = randomUUID(),
     guestId: string = randomUUID();
   let code = "ABCDEF123456";
@@ -25,6 +26,9 @@ test("invite guests fill single-photo slots in either order and pass editing con
     expires_at: new Date(Date.now() + 86400000).toISOString(),
   };
   const files = new Map<string, Buffer>();
+  const receipts = new Set<string>();
+  const subscribers = new Set<() => void>();
+  let interruptNextEdit = false;
   let portraitBytes = Buffer.alloc(0);
   const device =
     info.project.name === "chromium-phone"
@@ -39,6 +43,78 @@ test("invite guests fill single-photo slots in either order and pass editing con
   const host = await browser.newContext(contextOptions),
     guest = await browser.newContext(contextOptions);
   const install = async (context: BrowserContext, id: string) => {
+    await context.routeWebSocket(
+      "wss://*.supabase.co/realtime/v1/**",
+      (socket) => {
+        let topic = "",
+          joinRef: string | null = null;
+        const notify = () => {
+          if (topic)
+            socket.send(
+              JSON.stringify([
+                joinRef,
+                null,
+                topic,
+                "postgres_changes",
+                {
+                  ids: [1],
+                  data: {
+                    schema: "public",
+                    table: "ramon_rooms",
+                    type: "UPDATE",
+                    record: room,
+                    old_record: {},
+                    columns: [],
+                    commit_timestamp: new Date().toISOString(),
+                    errors: [],
+                  },
+                },
+              ]),
+            );
+        };
+        socket.onMessage((message) => {
+          const [join, ref, channel, event, payload] = JSON.parse(
+            message.toString(),
+          );
+          if (event === "phx_join") {
+            topic = channel;
+            joinRef = join;
+            subscribers.add(notify);
+            socket.send(
+              JSON.stringify([
+                join,
+                ref,
+                channel,
+                "phx_reply",
+                {
+                  status: "ok",
+                  response: {
+                    postgres_changes: payload.config.postgres_changes.map(
+                      (binding: object) => ({ ...binding, id: 1 }),
+                    ),
+                  },
+                },
+              ]),
+            );
+          } else if (event === "heartbeat" || event === "phx_leave") {
+            socket.send(
+              JSON.stringify([
+                join,
+                ref,
+                channel,
+                "phx_reply",
+                { status: "ok", response: {} },
+              ]),
+            );
+            if (event === "phx_leave") {
+              topic = "";
+              subscribers.delete(notify);
+            }
+          }
+        });
+        socket.onClose(() => subscribers.delete(notify));
+      },
+    );
     await context.route("https://*.supabase.co/**", async (route) => {
       const request = route.request(),
         url = new URL(request.url());
@@ -80,6 +156,7 @@ test("invite guests fill single-photo slots in either order and pass editing con
       if (url.pathname.includes("/rest/v1/rpc/")) {
         const action = url.pathname.split("/").pop();
         const args = request.postDataJSON();
+        const previousRevision = room.revision;
         if (action === "ramon_join_room" && !room.members.includes(id))
           room = {
             ...room,
@@ -94,6 +171,40 @@ test("invite guests fill single-photo slots in either order and pass editing con
             ...room,
             editor: args.next_editor,
             state: args.next_state,
+            revision: room.revision + 1,
+          };
+        }
+        if (
+          action === "ramon_apply_design" &&
+          !receipts.has(args.operation_id)
+        ) {
+          receipts.add(args.operation_id);
+          room = {
+            ...room,
+            state: {
+              ...room.state,
+              design: applyDesignChanges(
+                roomDesign(room.state.design),
+                args.changes,
+              ),
+            },
+            revision: room.revision + 1,
+          };
+        }
+        if (action === "ramon_retake_photo") {
+          if (room.revision !== args.expected_revision)
+            return json({ message: "Room changed", code: "P0001" }, 400);
+          room = {
+            ...room,
+            state: {
+              ...room.state,
+              phase: "capture",
+              photos: room.state.photos.slice(
+                0,
+                room.state.photoMode === "single" ? -1 : -2,
+              ),
+              captureId: randomUUID(),
+            },
             revision: room.revision + 1,
           };
         }
@@ -169,6 +280,12 @@ test("invite guests fill single-photo slots in either order and pass editing con
               captureId: randomUUID(),
             };
           room.revision++;
+        }
+        if (previousRevision !== room.revision)
+          for (const notify of subscribers) notify();
+        if (action === "ramon_apply_design" && interruptNextEdit) {
+          interruptNextEdit = false;
+          return route.abort("failed");
         }
         return json(room);
       }
@@ -342,28 +459,99 @@ test("invite guests fill single-photo slots in either order and pass editing con
             .toBe(cameraStream);
       }
     }
+    await expect(a.getByTestId("design-sync-status")).toContainText("Live", {
+      timeout: 20000,
+    });
+    await expect(b.getByTestId("design-sync-status")).toContainText("Live", {
+      timeout: 20000,
+    });
     await expect(
-      a.getByRole("button", { name: "Share design changes", exact: true }),
-    ).toBeVisible({ timeout: 15000 });
+      a.getByRole("button", { name: "Save & pass control", exact: true }),
+    ).toHaveCount(0);
     await expect(a.locator("[data-photo-slot] img")).toHaveCount(6);
     await a.getByRole("button", { name: "Text", exact: true }).click();
-    await a.getByLabel("Caption", { exact: true }).fill("Together, from afar");
+    await Promise.all([
+      a.getByLabel("Caption", { exact: true }).fill("Together, from afar"),
+      b.getByRole("button", { name: "Thin", exact: true }).click(),
+    ]);
+    await expect(a.getByTestId("photostrip")).toHaveClass(/frame-thin/);
+    await expect(a.getByLabel("Caption", { exact: true })).toHaveValue(
+      "Together, from afar",
+    );
     await a.getByLabel("Caption", { exact: true }).press("Tab");
-    await a
-      .getByRole("button", { name: "Save & pass control", exact: true })
-      .click();
-    await expect(
-      b.getByRole("button", { name: "Share design changes", exact: true }),
-    ).toBeVisible({ timeout: 15000 });
     await expect(b.locator("[data-caption-text]")).toHaveText(
       "Together, from afar",
     );
+    await a
+      .getByRole("button", { name: "Undo design change", exact: true })
+      .click();
+    await expect(b.locator("[data-caption-text]")).toHaveCount(0);
+    await expect(b.getByTestId("photostrip")).toHaveClass(/frame-thin/);
+    await a
+      .getByRole("button", { name: "Redo design change", exact: true })
+      .click();
+    await expect(b.locator("[data-caption-text]")).toHaveText(
+      "Together, from afar",
+    );
+    await Promise.all([
+      a.getByRole("button", { name: "Stickers", exact: true }).click(),
+      b.getByRole("button", { name: "Stickers", exact: true }).click(),
+    ]);
+    await Promise.all([
+      a.locator(".sticker-catalog button").first().click(),
+      b.locator(".sticker-catalog button").nth(1).click(),
+    ]);
+    await expect(a.locator("[data-sticker-id]")).toHaveCount(2);
+    await expect(b.locator("[data-sticker-id]")).toHaveCount(2);
+    await a.getByLabel("Upload custom sticker", { exact: true }).setInputFiles({
+      name: "custom.jpg",
+      mimeType: "image/jpeg",
+      buffer: portraitBytes,
+    });
+    await expect(b.locator("[data-sticker-id]")).toHaveCount(3, {
+      timeout: 15000,
+    });
+    await b.locator(".placed-stickers button").last().click();
+    await b
+      .getByRole("button", { name: "Delete selected sticker", exact: true })
+      .click();
+    await expect(a.locator("[data-sticker-id]")).toHaveCount(2);
+    await expect(a.getByTestId("design-sync-status")).toContainText(
+      "All changes saved",
+      { timeout: 15000 },
+    );
+    await expect(b.getByTestId("design-sync-status")).toContainText(
+      "All changes saved",
+      { timeout: 15000 },
+    );
+    if (!process.env.RAMON_LIVE_ROOM_TEST) {
+      await a.getByRole("button", { name: "Frame", exact: true }).click();
+      interruptNextEdit = true;
+      await a.getByRole("button", { name: "Rounded", exact: true }).click();
+      await expect(a.getByTestId("design-sync-status")).toContainText(
+        "Changes waiting to sync",
+      );
+      await b.getByRole("button", { name: "Frame", exact: true }).click();
+      await expect(
+        b.getByRole("button", { name: "Rounded", exact: true }),
+      ).toHaveAttribute("aria-pressed", "true");
+      await b.getByRole("button", { name: "Thin", exact: true }).click();
+      await expect(a.getByTestId("design-sync-status")).toContainText(
+        "All changes saved",
+        { timeout: 15000 },
+      );
+      await expect(a.getByTestId("photostrip")).toHaveClass(/frame-thin/);
+    }
     await expect(
       a.getByRole("button", { name: "PNG", exact: true }),
     ).toBeEnabled();
     await expect(
       b.getByRole("button", { name: "PNG", exact: true }),
     ).toBeEnabled();
+    await a.screenshot({
+      path: info.outputPath("editing-together.png"),
+      fullPage: true,
+    });
     await b
       .getByRole("button", { name: "Retake the last photo", exact: true })
       .click();
@@ -379,9 +567,9 @@ test("invite guests fill single-photo slots in either order and pass editing con
     await b
       .getByRole("button", { name: "Use this photo", exact: true })
       .click();
-    await expect(
-      a.getByRole("button", { name: "Share design changes", exact: true }),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(a.getByTestId("design-sync-status")).toBeVisible({
+      timeout: 15000,
+    });
     await expect(a.locator("[data-photo-slot] img")).toHaveCount(6);
     await expect(a.locator("[data-caption-text]")).toHaveText(
       "Together, from afar",

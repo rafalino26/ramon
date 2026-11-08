@@ -49,6 +49,8 @@ interface Props {
   createStickerSource: (blob: Blob) => string;
   onChooseLayout: () => void;
   readOnly?: boolean;
+  history?: { canUndo: boolean; canRedo: boolean };
+  assetsReady?: boolean;
 }
 const tabs = [
   { id: "frame", label: "Frame", icon: FiGrid },
@@ -65,16 +67,21 @@ export default function Edit({
   createStickerSource,
   onChooseLayout,
   readOnly = false,
+  history,
+  assetsReady = true,
 }: Props) {
   const { layout, images, design } = session;
   const [panel, setPanel] = useState<Panel>("frame");
   const [selected, setSelected] = useState<string | null>(null);
   const preview = useRef<HTMLDivElement>(null);
-  const { ready, isSaving, error, download, retry } = usePreparedExport(
-    preview,
-    images,
-    design,
-  );
+  const {
+    ready: exportReady,
+    isSaving,
+    error,
+    download,
+    retry,
+  } = usePreparedExport(preview, images, design);
+  const ready = assetsReady && exportReady;
   const change = (patch: Partial<EditorDesign>) =>
     dispatch({ type: "design", patch });
   const begin = () => dispatch({ type: "design-begin" });
@@ -196,7 +203,7 @@ export default function Edit({
                 className="small-icon-button"
                 aria-label="Undo design change"
                 title="Undo (Ctrl / Cmd Z)"
-                disabled={!session.past.length}
+                disabled={history ? !history.canUndo : !session.past.length}
                 onClick={() => dispatch({ type: "undo" })}
               >
                 <FiRotateCcw />
@@ -206,7 +213,7 @@ export default function Edit({
                 className="small-icon-button"
                 aria-label="Redo design change"
                 title="Redo (Shift Ctrl / Cmd Z)"
-                disabled={!session.future.length}
+                disabled={history ? !history.canRedo : !session.future.length}
                 onClick={() => dispatch({ type: "redo" })}
               >
                 <FiRotateCw />
