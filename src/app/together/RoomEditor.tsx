@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { FiCamera } from "react-icons/fi";
+import type { EditorDesign } from "@/lib/editor-design";
 import Edit from "../components/edit";
 import { createSession } from "@/lib/photobooth-session";
 import type { LayoutInfo } from "@/lib/layout";
@@ -20,6 +22,9 @@ export default function RoomEditor({
   resolveAsset,
   onRetake,
   live,
+  active = true,
+  photosReady = true,
+  onPreview,
   retakeCount = 1,
 }: {
   layout: LayoutInfo;
@@ -28,6 +33,9 @@ export default function RoomEditor({
   client: RoomClient;
   busy: boolean;
   live: boolean;
+  active?: boolean;
+  photosReady?: boolean;
+  onPreview?: (design: EditorDesign) => void;
   onRoom: (room: Room) => void;
   canonicalSource: (source: string) => string;
   persistChanges: (changes: DesignChange[]) => Promise<DesignChange[]>;
@@ -45,7 +53,6 @@ export default function RoomEditor({
   const createSource = usePhotoUrls(collaboration.sources);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [assetError, setAssetError] = useState("");
-  const [retaking, setRetaking] = useState(false);
   const sourcesKey = JSON.stringify(
     collaboration.design.stickers.map((sticker) => sticker.src),
   );
@@ -97,6 +104,9 @@ export default function RoomEditor({
     (sticker) =>
       sticker.src.startsWith("/stickers/") || sticker.src.startsWith("blob:"),
   );
+  useEffect(() => {
+    onPreview?.(design);
+  }, [design, onPreview]);
   return (
     <>
       <div className="room-note">
@@ -104,6 +114,13 @@ export default function RoomEditor({
         <p role="status" data-testid="design-sync-status">
           {live ? "Live" : "Connecting…"} · {collaboration.status}
         </p>
+        {photosReady &&
+          images.some(Boolean) &&
+          images.some((image) => !image) && (
+            <p className="editor-hint">
+              Empty photo spaces will stay blank in your download.
+            </p>
+          )}
         {(collaboration.syncError || assetError) && (
           <p role="alert" className="notice-error">
             {collaboration.syncError || assetError}
@@ -117,20 +134,11 @@ export default function RoomEditor({
       </div>
       <div className="room-actions">
         <button
-          className="text-link"
-          disabled={busy || retaking}
-          onClick={async () => {
-            setRetaking(true);
-            try {
-              await collaboration.flush();
-              await onRetake();
-            } catch {
-              /* The sync status displays pending writes and their error. */
-            } finally {
-              setRetaking(false);
-            }
-          }}
+          className="button button-secondary"
+          disabled={busy}
+          onClick={() => void onRetake()}
         >
+          <FiCamera />
           {retakeCount === 1 ? "Retake the last photo" : "Retake the last pair"}
         </button>
       </div>
@@ -147,10 +155,11 @@ export default function RoomEditor({
           canUndo: collaboration.canUndo,
           canRedo: collaboration.canRedo,
         }}
-        assetsReady={assetsReady}
+        assetsReady={assetsReady && photosReady}
+        active={active}
         createStickerSource={createSource}
-        onChooseLayout={() => {}}
-        readOnly={busy || retaking}
+        onChooseLayout={() => void onRetake()}
+        readOnly={busy || !active}
       />
     </>
   );

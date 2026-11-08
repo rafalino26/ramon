@@ -33,9 +33,14 @@ import PhotoSlotImage from "./PhotoSlotImage";
 interface CameraProps {
   layout: LayoutInfo;
   images: PhotoSlots;
-  onPhotoChange: (index: number, blob: Blob | null) => void;
+  onPhotoChange: (index: number, blob: Blob | null) => void | Promise<void>;
   onReset: () => void;
   onCaptureComplete: () => void;
+  showRoll?: boolean;
+  captureIndex?: number | null;
+  disabled?: boolean;
+  resetLabel?: string;
+  captureLabel?: string;
 }
 
 export default function Camera({
@@ -44,6 +49,11 @@ export default function Camera({
   onPhotoChange,
   onReset,
   onCaptureComplete,
+  showRoll = true,
+  captureIndex = null,
+  disabled = false,
+  resetLabel = "Reset",
+  captureLabel,
 }: CameraProps) {
   const webcamRef = useRef<Webcam>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -67,6 +77,8 @@ export default function Camera({
   );
   const [shutterOn, setShutterOn] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState("");
+  const [actualFacing, setActualFacing] = useState("");
 
   const previewAspectRatio = isWidescreen ? 16 / 9 : portrait ? 3 / 4 : 4 / 3;
 
@@ -80,7 +92,8 @@ export default function Camera({
 
   const totalSlots = getSlotCount(layout);
   const capturedCount = capturedImages.filter(Boolean).length;
-  const isComplete = capturedCount === totalSlots;
+  const isComplete = capturedCount === totalSlots && captureIndex === null;
+  const mirrored = (actualFacing || facingMode) === "user";
   const relevantCameras = useMemo(() => {
     const pattern =
       facingMode === "user" ? /front|user|facetime/i : /back|rear|environment/i;
@@ -130,12 +143,20 @@ export default function Camera({
       width: { ideal: previewAspectRatio < 1 ? 1440 : 1920 },
       height: { ideal: previewAspectRatio < 1 ? 1920 : 1080 },
       aspectRatio: { ideal: previewAspectRatio },
-      ...(activeDeviceIndex !== null &&
-      relevantCameras[activeDeviceIndex]?.deviceId
-        ? { deviceId: { exact: relevantCameras[activeDeviceIndex].deviceId } }
-        : { facingMode: { ideal: facingMode } }),
+      ...(selectedDevice
+        ? { deviceId: { exact: selectedDevice } }
+        : activeDeviceIndex !== null &&
+            relevantCameras[activeDeviceIndex]?.deviceId
+          ? { deviceId: { exact: relevantCameras[activeDeviceIndex].deviceId } }
+          : { facingMode: { ideal: facingMode } }),
     }),
-    [previewAspectRatio, facingMode, relevantCameras, activeDeviceIndex],
+    [
+      previewAspectRatio,
+      facingMode,
+      relevantCameras,
+      activeDeviceIndex,
+      selectedDevice,
+    ],
   );
 
   const cancelCapture = () => {
@@ -144,16 +165,25 @@ export default function Camera({
     setIsCapturing(false);
     setCountdown(0);
   };
+  useEffect(() => {
+    captureController.current?.abort();
+    captureController.current = null;
+    setIsCapturing(false);
+    setCountdown(0);
+  }, [captureIndex]);
   const switchCamera = () => {
     cancelCapture();
     setCameraReady(false);
     setActiveDeviceIndex(null);
+    setSelectedDevice("");
+    setActualFacing("");
     setFacingMode((mode) => (mode === "user" ? "environment" : "user"));
   };
   const cycleNextCamera = () => {
     if (relevantCameras.length > 1) {
       cancelCapture();
       setCameraReady(false);
+      setSelectedDevice("");
       const currentId = webcamRef.current?.stream
         ?.getVideoTracks()[0]
         ?.getSettings().deviceId;
@@ -166,8 +196,10 @@ export default function Camera({
     }
   };
   const handleCapture = async () => {
-    const index = capturedImages.findIndex((image) => image === null);
-    if (captureController.current || index < 0 || !cameraReady) return;
+    const index =
+      captureIndex ?? capturedImages.findIndex((image) => image === null);
+    if (disabled || captureController.current || index < 0 || !cameraReady)
+      return;
     const controller = new AbortController();
     captureController.current = controller;
     setIsCapturing(true);
@@ -198,13 +230,8 @@ export default function Camera({
       const box = viewportRef.current?.getBoundingClientRect();
       const visibleRatio =
         box && box.height > 0 ? box.width / box.height : previewAspectRatio;
-      const blob = await captureVideo(
-        video,
-        facingMode === "user",
-        filter,
-        visibleRatio,
-      );
-      if (!controller.signal.aborted) onPhotoChange(index, blob);
+      const blob = await captureVideo(video, mirrored, filter, visibleRatio);
+      if (!controller.signal.aborted) await onPhotoChange(index, blob);
     } catch (error) {
       if (!controller.signal.aborted)
         setCaptureError(
@@ -222,11 +249,18 @@ export default function Camera({
   };
   const handleReset = () => {
     cancelCapture();
-    if (facingMode !== "user" || isWidescreen || activeDeviceIndex !== null)
+    if (
+      facingMode !== "user" ||
+      isWidescreen ||
+      activeDeviceIndex !== null ||
+      selectedDevice
+    )
       setCameraReady(false);
     onReset();
     setFacingMode("user");
     setActiveDeviceIndex(null);
+    setSelectedDevice("");
+    setActualFacing("");
     setTimer(0);
     setFilter("normal");
     setIsWidescreen(false);
@@ -238,26 +272,31 @@ export default function Camera({
 
   return (
     <div>
-      <div className="panel-heading">
-        <span className="panel-kicker">A GOOD DAY TO MAKE A MEMORY</span>
-        <h2>Find your light. Be yourself.</h2>
-        <p>
-          A favourite filter, a little countdown, and your best wonderfully
-          imperfect pose.
-        </p>
-      </div>
+      {showRoll && (
+        <div className="panel-heading">
+          <span className="panel-kicker">A GOOD DAY TO MAKE A MEMORY</span>
+          <h2>Find your light. Be yourself.</h2>
+          <p>
+            A favourite filter, a little countdown, and your best wonderfully
+            imperfect pose.
+          </p>
+        </div>
+      )}
       {captureError && (
         <p className="notice-error" role="alert">
           {captureError}
         </p>
       )}
-      <div className="camera-workspace">
+      <div
+        className={`camera-workspace ${showRoll ? "" : "camera-workspace-single"}`}
+      >
         <div className="camera-column">
           <div className="camera-toolbar">
             <div className="camera-tools">
               <button
                 type="button"
                 className="camera-tool"
+                disabled={disabled}
                 onClick={switchCamera}
                 aria-label="Switch camera"
                 title="Switch camera"
@@ -269,6 +308,7 @@ export default function Camera({
                 <button
                   type="button"
                   className="camera-tool"
+                  disabled={disabled}
                   onClick={cycleNextCamera}
                   aria-label="Switch lens"
                 >
@@ -279,6 +319,7 @@ export default function Camera({
               <button
                 type="button"
                 className="camera-tool"
+                disabled={disabled}
                 onClick={() => {
                   cancelCapture();
                   setIsWidescreen((wide) => !wide);
@@ -302,6 +343,7 @@ export default function Camera({
                   type="button"
                   aria-label={seconds === 0 ? "Timer off" : `${seconds}s`}
                   aria-pressed={timer === seconds}
+                  disabled={disabled}
                   onClick={() => setTimer(seconds)}
                 >
                   {seconds === 0 ? "Off" : `${seconds}s`}
@@ -312,6 +354,7 @@ export default function Camera({
               className="landscape-filter-select"
               aria-label="Camera filter"
               value={filter}
+              disabled={disabled}
               onChange={(event) => {
                 const selected = cameraFilters.find(
                   (item) => item.value === event.target.value,
@@ -326,6 +369,37 @@ export default function Camera({
               ))}
             </select>
           </div>
+          {devices.filter((device) => device.kind === "videoinput").length >
+            1 && (
+            <label className="camera-device-choice">
+              Camera / lens
+              <select
+                aria-label="Camera device"
+                value={selectedDevice}
+                disabled={disabled}
+                onChange={(event) => {
+                  cancelCapture();
+                  setCameraReady(false);
+                  setActualFacing("");
+                  setSelectedDevice(event.target.value);
+                }}
+              >
+                <option value="">
+                  Automatic ({facingMode === "user" ? "front" : "back"})
+                </option>
+                {devices
+                  .filter((device) => device.kind === "videoinput")
+                  .map((device, index) => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || `Camera ${index + 1}`}
+                    </option>
+                  ))}
+              </select>
+              <small>
+                Choose an available lens for wide-angle or close-up photos.
+              </small>
+            </label>
+          )}
           <div
             ref={viewportRef}
             className="camera-viewport"
@@ -342,6 +416,17 @@ export default function Camera({
               playsInline
               videoConstraints={videoConstraints}
               onLoadedData={() => {
+                const track = webcamRef.current?.stream?.getVideoTracks()[0];
+                const label = track?.label ?? "";
+                const inferredFacing =
+                  /back|rear|environment|ultra.?wide|telephoto/i.test(label)
+                    ? "environment"
+                    : /front|user|facetime/i.test(label)
+                      ? "user"
+                      : facingMode;
+                setActualFacing(
+                  track?.getSettings().facingMode || inferredFacing,
+                );
                 setCameraReady(true);
                 setCameraError(null);
               }}
@@ -354,7 +439,7 @@ export default function Camera({
               }}
               style={{
                 filter: filterCss(filter),
-                transform: facingMode === "user" ? "scaleX(-1)" : "none",
+                transform: mirrored ? "scaleX(-1)" : "none",
               }}
             />
             {!cameraReady && !cameraError && (
@@ -388,7 +473,7 @@ export default function Camera({
               <>
                 <span className="camera-status">
                   <span className="live-dot" />{" "}
-                  {facingMode === "user" ? "Front camera" : "Back camera"}
+                  {mirrored ? "Front camera" : "Back camera"}
                 </span>
                 {["tl", "tr", "bl", "br"].map((corner) => (
                   <span
@@ -414,15 +499,18 @@ export default function Camera({
               type="button"
               className="reset-button"
               onClick={handleReset}
+              disabled={disabled}
             >
-              <FiRefreshCw /> Reset
+              <FiRefreshCw /> {resetLabel}
             </button>
             <button
               type="button"
               className="capture-button"
               onClick={handleCapture}
-              disabled={isComplete || isCapturing || !cameraReady}
-              aria-label={`Capture (${capturedCount}/${totalSlots})`}
+              disabled={disabled || isComplete || isCapturing || !cameraReady}
+              aria-label={
+                captureLabel ?? `Capture (${capturedCount}/${totalSlots})`
+              }
             >
               <FiCamera />
             </button>
@@ -431,6 +519,15 @@ export default function Camera({
                 ? "Looking lovely!"
                 : `${capturedCount} of ${totalSlots} moments`}
             </p>
+            {isCapturing && countdown > 0 && (
+              <button
+                type="button"
+                className="button button-secondary cancel-capture-button"
+                onClick={cancelCapture}
+              >
+                Cancel timer
+              </button>
+            )}
           </div>
           <div className="camera-filters" aria-label="Camera filters">
             {cameraFilters.map((item, index) => (
@@ -440,6 +537,7 @@ export default function Camera({
                 className="filter-option"
                 aria-label={item.label}
                 aria-pressed={filter === item.value}
+                disabled={disabled}
                 onClick={() => setFilter(item.value)}
               >
                 <span style={{ filter: item.css }}>
@@ -450,57 +548,59 @@ export default function Camera({
             ))}
           </div>
         </div>
-        <aside className="camera-roll">
-          <div className="camera-roll-header">
-            <h3>Your moments</h3>
-            <span>
-              {capturedCount}/{totalSlots}
-            </span>
-          </div>
-          <div
-            className="photo-grid"
-            style={{
-              ...getGridStyle(layout),
-              maxWidth: Math.max(
-                90,
-                Math.min(210, 380 * getLayoutAspect(layout)),
-              ),
-              marginInline: "auto",
-            }}
-          >
-            {capturedImages.map((image, index) => (
-              <div
-                key={index}
-                className="photo-cell"
-                style={getCellStyle(getCells(layout)[index])}
-              >
-                {image ? (
-                  <PhotoSlotImage
-                    source={image}
-                    alt={`Capture ${index + 1}`}
-                    onDelete={() => handleDeletePhoto(index)}
-                  />
-                ) : (
-                  <span className="empty-capture">{index + 1}</span>
-                )}
-              </div>
-            ))}
-          </div>
-          <p>
-            A little collection of you.
-            <br />
-            Not quite right? Remove it and try again.
-          </p>
-          {isComplete && (
-            <button
-              type="button"
-              className="button button-primary"
-              onClick={onCaptureComplete}
+        {showRoll && (
+          <aside className="camera-roll">
+            <div className="camera-roll-header">
+              <h3>Your moments</h3>
+              <span>
+                {capturedCount}/{totalSlots}
+              </span>
+            </div>
+            <div
+              className="photo-grid"
+              style={{
+                ...getGridStyle(layout),
+                maxWidth: Math.max(
+                  90,
+                  Math.min(210, 380 * getLayoutAspect(layout)),
+                ),
+                marginInline: "auto",
+              }}
             >
-              <FiCheck /> Make it yours <FiArrowRight />
-            </button>
-          )}
-        </aside>
+              {capturedImages.map((image, index) => (
+                <div
+                  key={index}
+                  className="photo-cell"
+                  style={getCellStyle(getCells(layout)[index])}
+                >
+                  {image ? (
+                    <PhotoSlotImage
+                      source={image}
+                      alt={`Capture ${index + 1}`}
+                      onDelete={() => handleDeletePhoto(index)}
+                    />
+                  ) : (
+                    <span className="empty-capture">{index + 1}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p>
+              A little collection of you.
+              <br />
+              Not quite right? Remove it and try again.
+            </p>
+            {isComplete && (
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={onCaptureComplete}
+              >
+                <FiCheck /> Make it yours <FiArrowRight />
+              </button>
+            )}
+          </aside>
+        )}
       </div>
     </div>
   );

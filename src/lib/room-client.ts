@@ -5,11 +5,13 @@ import publicConfig from "./room-public-config.json";
 export interface RoomState {
   phase: "lobby" | "layout" | "capture" | "edit";
   layout: string;
-  photos: string[];
+  photos: (string | null)[];
   design: EditorDesign | null;
   captureId?: string;
   layoutChosen?: boolean;
   photoMode?: "single";
+  photoTools?: boolean;
+  photoHistory?: Record<string, { undo: boolean; redo: boolean }>;
 }
 export interface Room {
   code: string;

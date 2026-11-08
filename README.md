@@ -8,7 +8,7 @@ Editor menyediakan 25 layout, 8 gaya bingkai, 24 pilihan warna dan warna bebas, 
 
 ## Menjalankan
 
-Mode dua orang tersedia di `/together`. Room memakai Supabase, preview kamera lokal, satu foto per slot tanpa urutan giliran, dan editor kolaboratif dengan sinkronisasi otomatis melalui Realtime. Link undangan langsung membuka alur Join. Konfigurasi project, hosting, serta job pembersihan foto dijelaskan di [panduan room](docs/ROOMS.md).
+Mode dua orang tersedia di `/together`. Room memakai Supabase, preview kamera lokal, satu foto per slot tanpa urutan giliran, dan editor kolaboratif dengan sinkronisasi otomatis melalui Realtime. Setiap foto bisa dihapus, diganti, dipindah, serta di-undo/redo per peserta. Kamera memakai kontrol yang sama dengan mode biasa, termasuk depan/belakang, lensa yang tersedia, wide view, timer, dan filter. Link undangan langsung membuka alur Join. Konfigurasi project, hosting, serta job pembersihan foto dijelaskan di [panduan room](docs/ROOMS.md).
 
 Gunakan Node.js 22 LTS atau versi LTS yang lebih baru dan npm.
 

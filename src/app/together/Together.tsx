@@ -7,13 +7,9 @@ import {
   type Room,
   type RoomClient,
 } from "@/lib/room-client";
-import { layouts, getSlotCount, getCells } from "@/lib/layout";
-import { createDesign, type EditorDesign } from "@/lib/editor-design";
+import { layouts } from "@/lib/layout";
 import { mapChangeSources, type DesignChange } from "@/lib/room-design";
-import { composeRoomPhoto } from "@/lib/room-collage";
-import RoomCamera from "./RoomCamera";
-import RoomEditor from "./RoomEditor";
-import PhotostripPreview from "../components/photostrip";
+import RoomStudio from "./RoomStudio";
 import LayoutGallery from "../components/LayoutGallery";
 
 export default function Together() {
@@ -34,11 +30,6 @@ export default function Together() {
   const sourcePaths = useRef(new Map<string, string>());
   const uploads = useRef(new Map<string, Promise<string>>());
   const [live, setLive] = useState(false);
-  const [preparation, setPrepared] = useState<{
-    key: string;
-    photos: (string | null)[];
-    design: EditorDesign;
-  } | null>(null);
   const accept = useCallback((next: Room) => {
     if (
       !current.current ||
@@ -182,84 +173,6 @@ export default function Together() {
   }, []);
   const layout =
     layouts.find((item) => item.id === room?.state.layout) ?? layouts[6];
-  const photoKey = JSON.stringify(room?.state.photos);
-  const portraitsPerSlot = room?.state.photoMode === "single" ? 1 : 2;
-  const designKey =
-    room?.state.phase === "capture" ? JSON.stringify(room.state.design) : "";
-  const preparationKey = JSON.stringify([
-    room?.state.phase,
-    layout.id,
-    portraitsPerSlot,
-    photoKey,
-    designKey,
-  ]);
-  // Photo preparation stays stable while collaborators edit the design.
-  const prepared = preparation?.key === preparationKey ? preparation : null;
-  useEffect(() => {
-    if (
-      !room ||
-      (room.state.phase !== "capture" && room.state.phase !== "edit")
-    ) {
-      setPrepared(null);
-      return;
-    }
-    const abort = new AbortController();
-    const owned: string[] = [];
-    setPrepared(null);
-    const prepare = async () => {
-      const photos: (string | null)[] = [];
-      const cells = getCells(layout);
-      for (let index = 0; index < getSlotCount(layout); index++) {
-        if (portraitsPerSlot === 1) {
-          const path = room.state.photos[index];
-          photos.push(path ? await resolveAsset(path) : null);
-          continue;
-        }
-        if (!room.state.photos[index * 2]) {
-          photos.push(null);
-          continue;
-        }
-        const pair = await Promise.all(
-          room.state.photos.slice(index * 2, index * 2 + 2).map(resolveAsset),
-        );
-        const cell = cells[index];
-        const aspect =
-          ((layout.photoAspect ?? 1) * (cell.cols ?? 1)) / (cell.rows ?? 1);
-        const blob = await composeRoomPhoto(pair, aspect, abort.signal);
-        abort.signal.throwIfAborted();
-        const url = URL.createObjectURL(blob);
-        owned.push(url);
-        photos.push(url);
-      }
-      const design =
-        room.state.phase === "capture"
-          ? (room.state.design ?? createDesign())
-          : createDesign();
-      const stickers = await Promise.all(
-        design.stickers.map(async (sticker) => ({
-          ...sticker,
-          src: sticker.src.startsWith("/stickers/")
-            ? sticker.src
-            : await resolveAsset(sticker.src),
-        })),
-      );
-      if (!abort.signal.aborted)
-        setPrepared({
-          key: preparationKey,
-          photos,
-          design: { ...design, stickers },
-        });
-    };
-    void prepare().catch((cause) => {
-      if (!abort.signal.aborted) setError(cause.message);
-    });
-    return () => {
-      abort.abort();
-      owned.forEach((url) => URL.revokeObjectURL(url));
-    };
-    // Only shared assets/layout/design require recomposition, not controller/presence updates.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preparationKey, layout, resolveAsset]);
   const layoutAction = async (
     action: "continue" | "change" | "select" | "start",
     layoutId?: string,
@@ -362,11 +275,6 @@ export default function Together() {
       accept(next);
     });
   const other = room?.members.find((id) => id !== user);
-  const sharedCount = room?.state.photos.length ?? 0;
-  const submitted =
-    portraitsPerSlot === 2 &&
-    sharedCount % 2 === 1 &&
-    room?.state.photos[sharedCount - 1].split("/")[1] === user;
   return (
     <div className="page-width together-page">
       <span className="eyebrow">A LITTLE CLOSER, EVEN FROM AFAR</span>
@@ -456,7 +364,7 @@ export default function Together() {
                   className="button button-secondary"
                   disabled={busy}
                   onClick={() => {
-                    if (room.state.photos.length) setConfirmLayout(true);
+                    if (room.state.photos.some(Boolean)) setConfirmLayout(true);
                     else void run(() => layoutAction("change"));
                   }}
                 >
@@ -574,123 +482,22 @@ export default function Together() {
               </fieldset>
             </section>
           )}
-          {room.state.phase === "capture" && (
-            <section className="room-card room-capture-workspace">
-              <div className="room-capture-camera">
-                <h2>
-                  Photo{" "}
-                  {Math.floor(room.state.photos.length / portraitsPerSlot) + 1}{" "}
-                  of {getSlotCount(layout)}
-                </h2>
-                <p>
-                  {submitted
-                    ? "Your portrait is in this slot. Your camera stays open while your partner adds theirs."
-                    : "Both cameras are ready to use. Whoever shares first fills the next empty slot."}
-                </p>
-                <p>
-                  {room.state.photos.length} of{" "}
-                  {getSlotCount(layout) * portraitsPerSlot} photos shared
-                </p>
-                <RoomCamera
-                  key={room.state.captureId ?? "legacy"}
-                  disabled={busy || submitted}
-                  onUse={async (blob) => {
-                    if (locked.current)
-                      throw new Error("Please wait for the current action.");
-                    locked.current = true;
-                    setBusy(true);
-                    const shot = current.current!;
-                    try {
-                      // Keep uploaded files after an ambiguous network failure:
-                      // the server may already have accepted the submission.
-                      const path = await upload(blob);
-                      accept(
-                        await roomRpc(
-                          client.current!,
-                          portraitsPerSlot === 1
-                            ? "ramon_submit_single_photo"
-                            : "ramon_submit_photo",
-                          {
-                            room_code: shot.code,
-                            photo_path: path,
-                            ...(portraitsPerSlot === 2
-                              ? {
-                                  pair_index: Math.floor(
-                                    shot.state.photos.length / 2,
-                                  ),
-                                }
-                              : {}),
-                            capture_id: shot.state.captureId ?? "",
-                          },
-                        ),
-                      );
-                    } finally {
-                      locked.current = false;
-                      setBusy(false);
-                    }
-                  }}
-                />
-              </div>
-              <div className="room-capture-preview">
-                <h2>Your shared photobooth</h2>
-                <p className="editor-hint">
-                  {portraitsPerSlot === 1
-                    ? "Each slot holds one photo. New photos appear here as they arrive."
-                    : "This older session uses paired portraits. Use Change layout to start one photo per slot."}
-                </p>
-                <div className="preview-stage">
-                  <PhotostripPreview
-                    layout={layout}
-                    images={
-                      prepared?.photos ?? Array(getSlotCount(layout)).fill(null)
-                    }
-                    design={prepared?.design ?? createDesign()}
-                    selected={null}
-                    onSelect={() => {}}
-                    onUpdateSticker={() => {}}
-                    onRemoveSticker={() => {}}
-                    onBegin={() => {}}
-                    onEnd={() => {}}
-                  />
-                </div>
-                <p role="status">
-                  {prepared
-                    ? `${sharedCount} photos in the layout`
-                    : "Updating preview…"}
-                </p>
-              </div>
-            </section>
+          {(room.state.phase === "capture" || room.state.phase === "edit") && (
+            <RoomStudio
+              key={room.code + (room.state.captureId ?? "legacy")}
+              room={room}
+              user={user}
+              client={client.current!}
+              layout={layout}
+              busy={busy}
+              live={live}
+              onRoom={accept}
+              upload={upload}
+              resolveAsset={resolveAsset}
+              canonicalSource={canonicalSource}
+              persistChanges={persistChanges}
+            />
           )}
-          {room.state.phase === "edit" &&
-            (prepared ? (
-              <RoomEditor
-                key={room.code + (room.state.captureId ?? "legacy") + photoKey}
-                layout={layout}
-                images={prepared.photos}
-                room={room}
-                client={client.current!}
-                busy={busy}
-                onRoom={accept}
-                canonicalSource={canonicalSource}
-                persistChanges={persistChanges}
-                resolveAsset={resolveAsset}
-                live={live}
-                onRetake={() =>
-                  run(async () => {
-                    const snapshot = current.current!;
-                    accept(
-                      await roomRpc(client.current!, "ramon_retake_photo", {
-                        room_code: snapshot.code,
-                        expected_revision: snapshot.revision,
-                      }),
-                    );
-                  })
-                }
-                retakeCount={portraitsPerSlot}
-              />
-            ) : (
-              <p role="status">Putting your portraits together…</p>
-            ))}
         </>
       )}
     </div>

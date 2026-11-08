@@ -1,114 +1,87 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { captureVideo } from "@/lib/camera";
+import { FiCamera, FiUpload } from "react-icons/fi";
+import Camera from "../components/camera";
 import { prepareUpload } from "@/lib/images";
+import type { LayoutInfo } from "@/lib/layout";
 
 export default function RoomCamera({
   onUse,
   disabled,
+  active = true,
+  layout,
+  images,
+  targetSlot,
 }: {
   onUse: (blob: Blob) => Promise<void>;
   disabled: boolean;
+  active?: boolean;
+  layout: LayoutInfo;
+  images: readonly (string | null)[];
+  targetSlot: number | null;
 }) {
-  const video = useRef<HTMLVideoElement>(null);
-  const stream = useRef<MediaStream | null>(null);
   const [opened, setOpened] = useState(false);
-  const [ready, setReady] = useState(false);
   const [candidate, setCandidate] = useState<Blob | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  const [error, setError] = useState("");
+  const [preview, setPreview] = useState("");
   const [working, setWorking] = useState(false);
+  const [error, setError] = useState("");
   const controller = useRef<AbortController | null>(null);
   useEffect(() => {
     if (!candidate) {
-      setPreview(null);
+      setPreview("");
       return;
     }
     const url = URL.createObjectURL(candidate);
     setPreview(url);
     return () => URL.revokeObjectURL(url);
   }, [candidate]);
-  useEffect(() => {
-    if (!opened) return;
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setError(
-        "Camera access requires HTTPS or localhost. You can also upload a photo.",
-      );
-      setOpened(false);
-      return;
-    }
-    let active = true;
-    setReady(false);
-    navigator.mediaDevices
-      .getUserMedia({
-        video: {
-          facingMode: "user",
-          width: { ideal: 1280 },
-          height: { ideal: 960 },
-        },
-        audio: false,
-      })
-      .then((media) => {
-        if (!active) {
-          media.getTracks().forEach((track) => track.stop());
-          return;
-        }
-        stream.current = media;
-        if (video.current) video.current.srcObject = media;
-      })
-      .catch((cause) => {
-        if (active) {
-          setError(cause.message);
-          setOpened(false);
-        }
-      });
-    return () => {
-      active = false;
-      stream.current?.getTracks().forEach((track) => track.stop());
-      stream.current = null;
-    };
-  }, [opened]);
   useEffect(() => () => controller.current?.abort(), []);
-  const capture = async () => {
-    if (!video.current) return;
+  const share = async (blob: Blob) => {
     setWorking(true);
     setError("");
     try {
-      const box = video.current.getBoundingClientRect();
-      await onUse(
-        await captureVideo(
-          video.current,
-          true,
-          "normal",
-          box.width / box.height,
-        ),
-      );
+      await onUse(blob);
+      setCandidate(null);
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "Could not capture the photo.",
+        cause instanceof Error ? cause.message : "Photo could not be shared.",
       );
+      throw cause;
     } finally {
       setWorking(false);
     }
   };
   return (
-    <section className="room-camera">
-      {opened && (
-        <video
-          ref={video}
-          autoPlay
-          muted
-          playsInline
-          onLoadedData={() => setReady(true)}
+    <section className="room-camera-studio">
+      {active && opened && !candidate && (
+        <Camera
+          layout={layout}
+          images={images}
+          showRoll={false}
+          captureIndex={targetSlot}
+          disabled={disabled || working}
+          captureLabel="Take & share photo"
+          resetLabel="Reset camera"
+          onPhotoChange={async (_, blob) => {
+            if (blob) await share(blob);
+          }}
+          onReset={() => {}}
+          onCaptureComplete={() => {}}
         />
       )}
-      {preview && <img src={preview} alt="Your photo before sharing" />}
       {!opened && !preview && (
         <div className="room-camera-empty">
-          Your camera preview appears here.
-          <br />
-          Open your camera to start.
+          <FiCamera />
+          <h3>Your good side, together.</h3>
+          <p>Use your camera or choose a photo from your device.</p>
         </div>
+      )}
+      {preview && (
+        <img
+          className="room-photo-review"
+          src={preview}
+          alt="Your photo before sharing"
+        />
       )}
       <div className="room-actions">
         {candidate ? (
@@ -118,47 +91,45 @@ export default function RoomCamera({
               disabled={disabled || working}
               onClick={() => setCandidate(null)}
             >
-              Retake
+              Choose another photo
             </button>
             <button
               className="button button-primary"
               disabled={disabled || working}
-              onClick={async () => {
-                setWorking(true);
-                try {
-                  await onUse(candidate);
-                  setCandidate(null);
-                } catch (cause) {
-                  setError(
-                    cause instanceof Error
-                      ? cause.message
-                      : "Photo could not be shared.",
-                  );
-                } finally {
-                  setWorking(false);
-                }
-              }}
+              onClick={() => void share(candidate).catch(() => {})}
             >
               Use this photo
             </button>
           </>
         ) : (
           <>
-            <button
-              className="button button-primary"
-              disabled={disabled || working || (opened && !ready)}
-              onClick={() =>
-                opened ? void capture() : (setError(""), setOpened(true))
-              }
-            >
-              {opened ? "Take & share photo" : "Open my camera"}
-            </button>
-            <label className="button button-secondary">
-              Upload a photo
+            {!opened && (
+              <button
+                className="button button-primary"
+                disabled={disabled || working}
+                onClick={() => {
+                  setError("");
+                  setOpened(true);
+                }}
+              >
+                <FiCamera /> Open my camera
+              </button>
+            )}
+            {opened && (
+              <button
+                className="button button-secondary"
+                onClick={() => setOpened(false)}
+              >
+                Close camera
+              </button>
+            )}
+            <label className="button button-secondary room-upload-button">
+              <FiUpload /> Upload a photo
               <input
                 className="sr-only"
                 type="file"
                 accept="image/*"
+                aria-label="Upload a room photo"
                 disabled={disabled || working}
                 onChange={async (event) => {
                   const file = event.target.files?.[0];
@@ -176,7 +147,7 @@ export default function RoomCamera({
                       setError(
                         cause instanceof Error
                           ? cause.message
-                          : "Unable to open photo.",
+                          : "Could not open this photo.",
                       );
                   } finally {
                     if (!abort.signal.aborted) setWorking(false);
@@ -187,7 +158,7 @@ export default function RoomCamera({
           </>
         )}
       </div>
-      {working && <p role="status">Preparing your photo…</p>}
+      {working && <p role="status">Preparing and sharing your photo…</p>}
       {error && (
         <p role="alert" className="notice-error">
           {error}

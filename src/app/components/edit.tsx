@@ -51,6 +51,7 @@ interface Props {
   readOnly?: boolean;
   history?: { canUndo: boolean; canRedo: boolean };
   assetsReady?: boolean;
+  active?: boolean;
 }
 const tabs = [
   { id: "frame", label: "Frame", icon: FiGrid },
@@ -69,6 +70,7 @@ export default function Edit({
   readOnly = false,
   history,
   assetsReady = true,
+  active = true,
 }: Props) {
   const { layout, images, design } = session;
   const [panel, setPanel] = useState<Panel>("frame");
@@ -80,7 +82,7 @@ export default function Edit({
     error,
     download,
     retry,
-  } = usePreparedExport(preview, images, design);
+  } = usePreparedExport(preview, images, design, active);
   const ready = assetsReady && exportReady;
   const change = (patch: Partial<EditorDesign>) =>
     dispatch({ type: "design", patch });
@@ -98,6 +100,7 @@ export default function Edit({
   }, [selected]);
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
+      if (readOnly || !active) return;
       const target = event.target;
       if (
         target instanceof HTMLElement &&
@@ -115,7 +118,7 @@ export default function Edit({
     };
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
-  }, [dispatch]);
+  }, [dispatch, readOnly, active]);
   const updateSticker = (id: string, patch: Partial<PlacedSticker>) =>
     change({
       stickers: design.stickers.map((sticker) =>

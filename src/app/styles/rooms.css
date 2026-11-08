@@ -64,23 +64,6 @@
   margin-block: 16px;
   color: #704a8f;
 }
-.room-camera {
-  max-width: 550px;
-  margin: auto;
-}
-.room-camera > video,
-.room-camera > img {
-  display: block;
-  width: min(100%, 360px);
-  aspect-ratio: 3/4;
-  object-fit: cover;
-  border-radius: 18px;
-  background: #efe7fa;
-  margin-inline: auto;
-}
-.room-camera > video {
-  transform: scaleX(-1);
-}
 .room-control-group {
   display: contents;
   border: 0;
@@ -130,9 +113,6 @@
   margin: auto;
   padding: 18px;
 }
-.room-camera > video {
-  max-height: 60svh;
-}
 @media (max-width: 767px) {
   .room-capture-workspace {
     grid-template-columns: minmax(0, 1fr);
@@ -144,10 +124,296 @@
   .room-capture-preview .preview-stage {
     max-height: 360px;
   }
-  .room-camera > video,
   .room-camera-empty {
     max-height: 50svh;
     width: auto;
     max-width: 100%;
+  }
+}
+
+.room-photo-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.together-page:has(.room-studio) > .eyebrow {
+  display: none;
+}
+.together-page:has(.room-studio) > h1 {
+  font-size: clamp(28px, 4vw, 38px);
+}
+.together-page:has(.room-studio) > p {
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+.together-page:has(.room-studio) .room-summary {
+  padding: 16px 20px;
+}
+.together-page:has(.room-studio) .room-summary h2 {
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+.together-page:has(.room-studio) .room-summary p {
+  font-size: 14px;
+}
+.together-page:has(.room-studio) .room-summary .room-actions {
+  margin: 0;
+}
+.together-page:has(.room-studio) .room-summary .button {
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+.room-photo-heading h2 {
+  margin-block: 8px;
+}
+.room-photo-heading p,
+.room-photo-notice {
+  color: var(--muted);
+  font-size: 14px;
+}
+.room-photo-history {
+  margin: 0;
+  gap: 8px;
+}
+.room-photo-history .button {
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+.room-photo-slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 12px;
+  margin-top: 22px;
+}
+.room-photo-tile {
+  position: relative;
+  min-width: 0;
+  max-width: 160px;
+}
+.room-photo-select {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 4/5;
+  overflow: hidden;
+  border: 2px solid #e5d8f4;
+  border-radius: 16px;
+  background: #faf7fd;
+  color: #78549a;
+}
+.room-photo-select img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.room-photo-select > span {
+  display: grid;
+  place-items: center;
+  place-content: center;
+  height: 100%;
+  gap: 8px;
+  padding: 10px;
+}
+.room-photo-select > span svg {
+  width: 26px;
+  height: 26px;
+}
+.room-photo-select small {
+  font-size: 12px;
+}
+.room-photo-select > strong {
+  position: absolute;
+  bottom: 7px;
+  left: 7px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background: white;
+  color: #7136b2;
+  box-shadow: 0 2px 8px #30253f12;
+}
+.room-photo-tile.is-selected .room-photo-select {
+  border-color: var(--purple);
+  box-shadow: 0 0 0 3px #9255d421;
+}
+.room-delete-photo {
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  border: 1px solid #e9ddf2;
+  color: #9b3d68;
+  background: #fffffff5;
+  box-shadow: 0 2px 8px #30253f12;
+}
+.room-delete-photo:hover {
+  background: #fff0f6;
+}
+.room-selected-photo {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: #f8f2ff;
+  border-radius: 14px;
+  color: #704a8f;
+}
+.room-selected-photo .room-actions {
+  margin-bottom: 0;
+}
+.room-photo-notice {
+  margin-top: 14px;
+}
+.room-studio-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  background: #f0e7fa;
+  border-radius: 18px;
+  padding: 6px;
+  margin: 22px 0;
+}
+.room-studio-tabs > button {
+  min-height: 52px;
+  display: flex;
+  gap: 9px;
+  justify-content: center;
+  align-items: center;
+  border-radius: 13px;
+  color: #78549a;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 10px;
+}
+.room-studio-tabs > button[aria-selected="true"] {
+  background: var(--purple);
+  color: white;
+  box-shadow: 0 4px 12px #8b4dce22;
+}
+.room-studio-tabs > button span {
+  font-size: 12px;
+  padding: 3px 7px;
+  border-radius: 8px;
+  background: #ffffff29;
+}
+.room-studio [hidden] {
+  display: none !important;
+}
+.room-camera-studio .camera-workspace-single {
+  display: block;
+}
+.room-camera-studio .camera-toolbar {
+  flex-wrap: wrap;
+}
+.room-camera-studio .camera-tool {
+  min-height: 44px;
+}
+.room-camera-studio .camera-viewport {
+  max-height: 65svh;
+  margin-inline: auto;
+}
+.room-camera-studio .capture-actions {
+  flex-wrap: wrap;
+}
+.room-camera-studio .camera-device-choice {
+  margin-block: 12px;
+  max-width: none;
+}
+.camera-device-choice small {
+  font-size: 12px;
+  color: var(--muted);
+}
+.room-camera-studio .room-camera-empty {
+  width: 100%;
+  aspect-ratio: auto;
+  min-height: 260px;
+}
+.room-camera-empty > svg {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 16px;
+}
+.room-camera-empty h3 {
+  font-size: 20px;
+  color: var(--ink);
+  margin-bottom: 10px;
+}
+.room-camera-empty p {
+  font-size: 14px;
+  line-height: 1.7;
+}
+.room-photo-review {
+  display: block;
+  width: min(100%, 380px);
+  max-height: 55svh;
+  object-fit: contain;
+  background: #f2eafb;
+  border-radius: 18px;
+  margin: auto;
+}
+.room-camera-studio label.room-upload-button {
+  display: inline-flex;
+  margin: 0;
+  max-width: none;
+  gap: 8px;
+  position: relative;
+}
+.room-camera-studio input.sr-only {
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+}
+.room-upload-button:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+@media (max-width: 639px) {
+  .room-photo-slots {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .room-photo-history {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .room-photo-history .button {
+    min-width: 0;
+    min-height: 60px;
+    flex-direction: column;
+    padding: 8px 4px;
+    font-size: 11px;
+    gap: 5px;
+  }
+  .room-photo-select {
+    aspect-ratio: 1;
+  }
+  .room-photo-select > span small {
+    display: none;
+  }
+  .room-delete-photo {
+    width: 38px;
+    height: 38px;
+    right: 3px;
+    top: 3px;
+  }
+  .room-studio-tabs > button {
+    font-size: 13px;
+    gap: 7px;
+  }
+  .room-studio-tabs > button span {
+    display: none;
+  }
+  .room-camera-studio .room-actions .button {
+    flex: 1;
   }
 }

@@ -15,6 +15,7 @@ export function usePreparedExport(
   preview: RefObject<HTMLDivElement | null>,
   images: PhotoSlots,
   design: EditorDesign,
+  enabled = true,
 ) {
   const [prepared, setPrepared] = useState<{
     files: ExportFiles;
@@ -45,7 +46,7 @@ export function usePreparedExport(
 
   useEffect(() => {
     const element = preview.current;
-    if (!element || !images.some(Boolean)) return;
+    if (!enabled || !element || !images.some(Boolean)) return;
     const controller = new AbortController();
     setError(null);
     setPrepared(null);
@@ -77,10 +78,11 @@ export function usePreparedExport(
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [preview, images, design, revision]);
+  }, [preview, images, design, revision, enabled]);
 
   // Identity checks prevent downloading the previous frame during an effect transition.
   const ready =
+    enabled &&
     prepared !== null &&
     prepared.images === images &&
     prepared.design === design &&

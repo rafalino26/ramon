@@ -1365,6 +1365,14 @@ svg {
   color: #ab99b8;
   text-align: right;
 }
+.capture-actions .cancel-capture-button {
+  grid-column: 1 / -1;
+  min-width: 0;
+  width: 100%;
+  padding: 8px 10px;
+  white-space: normal;
+  font-size: 12px;
+}
 .reset-button {
   display: flex;
   align-items: center;
