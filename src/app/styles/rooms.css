@@ -185,20 +185,20 @@
 }
 .room-photo-slots {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  width: 100%;
   gap: 12px;
-  margin-top: 22px;
+  margin: 22px auto 0;
 }
 .room-photo-tile {
   position: relative;
   min-width: 0;
-  max-width: 160px;
+  min-height: 0;
 }
 .room-photo-select {
   position: relative;
   display: block;
   width: 100%;
-  aspect-ratio: 4/5;
+  height: 100%;
   overflow: hidden;
   border: 2px solid #e5d8f4;
   border-radius: 16px;
@@ -378,8 +378,7 @@
 }
 @media (max-width: 639px) {
   .room-photo-slots {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
+    gap: 8px;
   }
   .room-photo-history {
     width: 100%;
@@ -393,9 +392,6 @@
     padding: 8px 4px;
     font-size: 11px;
     gap: 5px;
-  }
-  .room-photo-select {
-    aspect-ratio: 1;
   }
   .room-photo-select > span small {
     display: none;

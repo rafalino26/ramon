@@ -1,5 +1,69 @@
 import { expect, test } from "@playwright/test";
 
+test("phone photo previews retain the chosen grid, strip and creative shapes", async ({ page }, info) => {
+  test.skip(!["chromium-phone", "webkit-ipad"].includes(info.project.name));
+  test.setTimeout(90_000);
+  await page.addInitScript(() => {
+    // Some Safari versions expose camera methods without devicechange events.
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: async () => [],
+        getUserMedia: async () => {
+          throw new DOMException("Camera unavailable in layout test", "NotAllowedError");
+        },
+      },
+    });
+  });
+  for (const viewport of [{ width: 320, height: 568 }, { width: 844, height: 390 }]) {
+    await page.setViewportSize(viewport);
+    for (const layout of [
+      { name: "3 x 2", ratio: 2 / 3, cols: 2, slots: 6 },
+      { name: "2 x 3", ratio: 3 / 2, cols: 3, slots: 6 },
+      { name: "4 x 1", ratio: 1 / 4, cols: 1, slots: 4 },
+      { name: "Portrait pair", ratio: 1.5, cols: 2, slots: 2 },
+      { name: "Spotlight", ratio: 2 / 3, cols: 2, slots: 3 },
+    ]) {
+      await page.goto("/photobooth");
+      await page.getByRole("button", { name: `${layout.name} layout`, exact: true }).click();
+      await page.getByRole("button", { name: "Use camera", exact: true }).click();
+      const grid = page.locator(".camera-roll .photo-grid");
+      await expect(grid).toBeVisible();
+      const box = (await grid.boundingBox())!;
+      expect(box.width / box.height).toBeCloseTo(layout.ratio, 2);
+      const cells = grid.locator(".photo-cell");
+      await expect(cells).toHaveCount(layout.slots);
+      const first = (await cells.nth(0).boundingBox())!;
+      const second = (await cells.nth(1).boundingBox())!;
+      if (layout.name === "Spotlight") {
+        expect(first.width).toBeCloseTo(box.width, 0);
+        expect(second.y).toBeGreaterThan(first.y + first.height);
+      } else if (layout.cols === 1) {
+        expect(second.x).toBeCloseTo(first.x, 0);
+        expect(second.y).toBeGreaterThan(first.y + first.height);
+      } else {
+        expect(second.y).toBeCloseTo(first.y, 0);
+        expect(second.x).toBeGreaterThan(first.x + first.width);
+        if (layout.slots > layout.cols) {
+          const nextRow = (await cells.nth(layout.cols).boundingBox())!;
+          expect(nextRow.x).toBeCloseTo(first.x, 0);
+          expect(nextRow.y).toBeGreaterThan(first.y + first.height);
+        }
+      }
+      for (const cell of await cells.all()) {
+        const tile = (await cell.boundingBox())!;
+        expect(tile.x).toBeGreaterThanOrEqual(box.x - 1);
+        expect(tile.x + tile.width).toBeLessThanOrEqual(box.x + box.width + 1);
+        expect(tile.y + tile.height).toBeLessThanOrEqual(box.y + box.height + 1);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+      if (layout.name === "3 x 2") {
+        await page.locator(".camera-roll").screenshot({ path: info.outputPath(`preview-${viewport.width}.png`), scale: "css" });
+      }
+    }
+  }
+});
+
 test("camera permission errors offer a usable retry on a small phone", async ({
   page,
 }, info) => {

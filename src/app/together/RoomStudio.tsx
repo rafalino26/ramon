@@ -13,7 +13,14 @@ import type { Room, RoomClient } from "@/lib/room-client";
 import { roomRpc } from "@/lib/room-client";
 import { createDesign, type EditorDesign } from "@/lib/editor-design";
 import type { DesignChange } from "@/lib/room-design";
-import { getSlotCount, type LayoutInfo } from "@/lib/layout";
+import {
+  getSlotCount,
+  getCells,
+  getCellStyle,
+  getGridStyle,
+  getLayoutAspect,
+  type LayoutInfo,
+} from "@/lib/layout";
 import { useRoomPhotos } from "@/hooks/use-room-photos";
 import PhotostripPreview from "../components/photostrip";
 import RoomCamera from "./RoomCamera";
@@ -224,7 +231,14 @@ export default function RoomStudio({
             </div>
           )}
         </div>
-        <div className="room-photo-slots" aria-label="Shared photo slots">
+        <div
+          className="room-photo-slots"
+          aria-label="Shared photo slots"
+          style={{
+            ...getGridStyle(layout),
+            maxWidth: Math.min(640, Math.max(96, 560 * getLayoutAspect(layout))),
+          }}
+        >
           {images.map((image, index) => {
             const filled = !!room.state.photos[single ? index : index * 2];
             return (
@@ -232,6 +246,7 @@ export default function RoomStudio({
                 key={index}
                 className={`room-photo-tile ${selected?.index === index ? "is-selected" : ""}`}
                 data-room-photo-slot={index}
+                style={getCellStyle(getCells(layout)[index])}
               >
                 <button
                   className="room-photo-select"

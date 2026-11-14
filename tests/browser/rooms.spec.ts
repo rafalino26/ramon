@@ -504,14 +504,31 @@ test("two participants capture and edit together with automatic sync", async ({
     await expect(
       b.getByRole("button", { name: "2 x 2 layout", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
-    await a.getByRole("button", { name: "2 x 3 layout", exact: true }).click();
+    await a.getByRole("button", { name: "3 x 2 layout", exact: true }).click();
     await expect(
-      b.getByRole("button", { name: "2 x 3 layout", exact: true }),
+      b.getByRole("button", { name: "3 x 2 layout", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
     await b
       .getByRole("button", { name: "Start taking photos", exact: true })
       .click();
     let cameraStream = "";
+    for (const participant of [a, b]) {
+      const tiles = participant.locator("[data-room-photo-slot]");
+      await expect(tiles).toHaveCount(6);
+      const first = (await tiles.nth(0).boundingBox())!;
+      const second = (await tiles.nth(1).boundingBox())!;
+      const third = (await tiles.nth(2).boundingBox())!;
+      const last = (await tiles.nth(5).boundingBox())!;
+      expect(second.y).toBeCloseTo(first.y, 0);
+      expect(second.x).toBeGreaterThan(first.x);
+      expect(third.x).toBeCloseTo(first.x, 0);
+      expect(third.y).toBeGreaterThan(first.y + first.height);
+      expect(last.x).toBeCloseTo(second.x, 0);
+      expect(last.y).toBeGreaterThan(third.y + third.height);
+      const grid = (await participant.getByLabel("Shared photo slots", { exact: true }).boundingBox())!;
+      expect(grid.width / grid.height).toBeCloseTo(2 / 3, 2);
+    }
+    await a.getByLabel("Shared photo slots", { exact: true }).screenshot({ path: info.outputPath("shared-layout-preview.png"), scale: "css" });
     if (
       info.project.name.startsWith("chromium") &&
       !process.env.RAMON_LIVE_ROOM_TEST

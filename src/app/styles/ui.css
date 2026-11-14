@@ -1027,7 +1027,6 @@ svg {
   position: relative;
   min-width: 0;
   min-height: 0;
-  aspect-ratio: 1;
   border-radius: 8px;
   overflow: hidden;
   background: #eee7f6;
@@ -2283,15 +2282,7 @@ svg {
     padding: 14px;
   }
   .camera-roll .photo-grid {
-    display: flex;
-    max-width: none !important;
     gap: 7px;
-  }
-  .camera-roll .photo-cell {
-    flex: 1;
-    aspect-ratio: 1;
-    min-width: 0;
-    max-width: 110px;
   }
   .camera-roll-header {
     margin-bottom: 10px;
@@ -2395,9 +2386,6 @@ svg {
   }
   .capture-actions > p {
     font-size: 9px;
-  }
-  .camera-roll .photo-cell {
-    min-height: 44px;
   }
 }
 
@@ -2607,13 +2595,7 @@ svg {
     padding: 10px;
   }
   .camera-roll .photo-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    max-width: none !important;
     gap: 5px;
-  }
-  .camera-roll .photo-cell {
-    max-width: none;
   }
   .camera-roll > p {
     display: none;

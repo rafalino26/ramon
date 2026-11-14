@@ -644,14 +644,6 @@
   .caption-field input {
     font-size: 16px;
   }
-  .camera-roll .photo-grid {
-    aspect-ratio: auto !important;
-    grid-template-rows: none !important;
-  }
-  .camera-roll .photo-grid > .photo-cell {
-    aspect-ratio: 1;
-    grid-area: auto !important;
-  }
   .sticker-credits {
     padding-block: 40px;
   }
@@ -660,14 +652,6 @@
   }
 }
 @media (max-height: 550px) and (orientation: landscape) {
-  .camera-roll .photo-grid {
-    aspect-ratio: auto !important;
-    grid-template-rows: none !important;
-  }
-  .camera-roll .photo-grid > .photo-cell {
-    aspect-ratio: 1;
-    grid-area: auto !important;
-  }
   .editor-preview-column {
     position: static;
   }

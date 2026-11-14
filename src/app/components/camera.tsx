@@ -143,10 +143,10 @@ export default function Camera({
       }
     };
     void refresh();
-    navigator.mediaDevices?.addEventListener("devicechange", refresh);
+    navigator.mediaDevices?.addEventListener?.("devicechange", refresh);
     return () => {
       active = false;
-      navigator.mediaDevices?.removeEventListener("devicechange", refresh);
+      navigator.mediaDevices?.removeEventListener?.("devicechange", refresh);
     };
   }, [cameraReady]);
 
