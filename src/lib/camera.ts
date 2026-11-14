@@ -17,6 +17,32 @@ export const cameraFilters = photoFilters.map((filter) => ({
 }));
 export const filterCss = (preset: CameraFilter) =>
   effectsCss({ ...defaultEffects(), preset });
+
+export function cameraConstraints(
+  facingMode: "user" | "environment",
+  deviceId: string,
+): MediaTrackConstraints & { resizeMode: ConstrainDOMString } {
+  // Camera capture formats are sensor-oriented. Portrait dimensions can make
+  // Safari crop the source before the video element receives its first frame.
+  // Keep this request independent of preview size, rotation and frame controls.
+  return {
+    width: { ideal: 1920 },
+    height: { ideal: 1440 },
+    resizeMode: { ideal: "none" },
+    ...(deviceId
+      ? { deviceId: { exact: deviceId } }
+      : { facingMode: { ideal: facingMode } }),
+  };
+}
+
+export function cameraFacing(track: MediaStreamTrack | undefined, fallback: string) {
+  const reported = track?.getSettings().facingMode;
+  if (reported === "user" || reported === "environment") return reported;
+  const label = track?.label ?? "";
+  if (/front|user|facetime/i.test(label)) return "user";
+  if (/back|rear|environment/i.test(label)) return "environment";
+  return fallback;
+}
 export function applyPixelFilter(
   data: Uint8ClampedArray,
   preset: CameraFilter,

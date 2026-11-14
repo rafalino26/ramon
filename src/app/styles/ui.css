@@ -1277,6 +1277,9 @@ svg {
   font-size: 11px;
   line-height: 1.5;
 }
+.camera-viewport:has(.camera-error) {
+  min-height: 260px;
+}
 .camera-status {
   position: absolute;
   top: 14px;

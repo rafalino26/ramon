@@ -442,7 +442,7 @@ test("camera reset cancels countdown and leaving the tab stops the stream", asyn
   await expect(
     page.getByRole("button", { name: "Capture (0/1)" }),
   ).toBeEnabled();
-  await page.getByRole("button", { name: "Wide view", exact: true }).click();
+  await page.getByRole("button", { name: "16:9 frame", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Capture (0/1)" }),
   ).toBeEnabled();

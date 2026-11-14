@@ -155,7 +155,13 @@ test("camera adapts to the screen and captures the visible crop", async ({
     const image = element as HTMLImageElement;
     return image.naturalWidth / image.naturalHeight;
   });
-  expect(sourceRatio).toBeCloseTo(box!.width / box!.height, 2);
+  const videoRatio = await page.locator("video").evaluate(element => {
+    const video = element as HTMLVideoElement;
+    return video.videoWidth / video.videoHeight;
+  });
+  // Portrait phones retain the full camera field, even if Safari delivers a
+  // landscape frame. Desktop and explicit 16:9 framing still use the crop.
+  expect(sourceRatio).toBeCloseTo(portrait ? videoRatio : box!.width / box!.height, 2);
   if (portrait) {
     await page.setViewportSize({ width: 844, height: 390 });
     await expect(

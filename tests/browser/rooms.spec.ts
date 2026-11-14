@@ -522,7 +522,7 @@ test("two participants capture and edit together with automatic sync", async ({
       await expect(
         a.getByRole("button", { name: "Take & share photo", exact: true }),
       ).toBeEnabled();
-      await a.getByRole("button", { name: "Wide view", exact: true }).click();
+      await a.getByRole("button", { name: "16:9 frame", exact: true }).click();
       await expect(
         a.getByLabel("Camera preview", { exact: true }),
       ).toHaveAttribute("data-view", "wide");

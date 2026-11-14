@@ -27,6 +27,8 @@ import {
   cameraFilters,
   filterCss,
   captureVideo,
+  cameraConstraints,
+  cameraFacing,
   type CameraFilter,
 } from "@/lib/camera";
 import PhotoSlotImage from "./PhotoSlotImage";
@@ -73,9 +75,6 @@ export default function Camera({
   const [countdown, setCountdown] = useState(0);
   const [isWidescreen, setIsWidescreen] = useState(false);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [activeDeviceIndex, setActiveDeviceIndex] = useState<number | null>(
-    null,
-  );
   const [shutterOn, setShutterOn] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState("");
@@ -102,13 +101,13 @@ export default function Camera({
   }, [focused]);
 
   const previewAspectRatio = isWidescreen ? 16 / 9 : portrait ? 3 / 4 : 4 / 3;
+  const showFullFrame = portrait && !isWidescreen;
 
   useEffect(() => {
     captureController.current?.abort();
     captureController.current = null;
     setIsCapturing(false);
     setCountdown(0);
-    setCameraReady(false);
   }, [previewAspectRatio]);
 
   const totalSlots = getSlotCount(layout);
@@ -160,24 +159,8 @@ export default function Camera({
   );
 
   const videoConstraints = useMemo(
-    () => ({
-      width: { ideal: previewAspectRatio < 1 ? 1440 : 1920 },
-      height: { ideal: previewAspectRatio < 1 ? 1920 : 1080 },
-      aspectRatio: { ideal: previewAspectRatio },
-      ...(selectedDevice
-        ? { deviceId: { exact: selectedDevice } }
-        : activeDeviceIndex !== null &&
-            relevantCameras[activeDeviceIndex]?.deviceId
-          ? { deviceId: { exact: relevantCameras[activeDeviceIndex].deviceId } }
-          : { facingMode: { ideal: facingMode } }),
-    }),
-    [
-      previewAspectRatio,
-      facingMode,
-      relevantCameras,
-      activeDeviceIndex,
-      selectedDevice,
-    ],
+    () => cameraConstraints(facingMode, selectedDevice),
+    [facingMode, selectedDevice],
   );
 
   const cancelCapture = () => {
@@ -195,7 +178,6 @@ export default function Camera({
   const switchCamera = () => {
     cancelCapture();
     setCameraReady(false);
-    setActiveDeviceIndex(null);
     setSelectedDevice("");
     setActualFacing("");
     setMirrorOverride(null);
@@ -203,18 +185,18 @@ export default function Camera({
   };
   const cycleNextCamera = () => {
     if (relevantCameras.length > 1) {
-      cancelCapture();
-      setCameraReady(false);
-      setSelectedDevice("");
       const currentId = webcamRef.current?.stream
         ?.getVideoTracks()[0]
-        ?.getSettings().deviceId;
+        ?.getSettings().deviceId || selectedDevice;
       const currentIndex = relevantCameras.findIndex(
         (device) => device.deviceId === currentId,
       );
-      setActiveDeviceIndex(
-        (Math.max(0, currentIndex) + 1) % relevantCameras.length,
-      );
+      const nextDevice = relevantCameras[(currentIndex + 1) % relevantCameras.length].deviceId;
+      if (nextDevice === selectedDevice) return;
+      cancelCapture();
+      setCameraReady(false);
+      setActualFacing("");
+      setSelectedDevice(nextDevice);
     }
   };
   const handleCapture = async () => {
@@ -252,7 +234,8 @@ export default function Camera({
       const box = viewportRef.current?.getBoundingClientRect();
       const visibleRatio =
         box && box.height > 0 ? box.width / box.height : previewAspectRatio;
-      const blob = await captureVideo(video, mirrored, filter, visibleRatio);
+      const captureRatio = showFullFrame ? video.videoWidth / video.videoHeight : visibleRatio;
+      const blob = await captureVideo(video, mirrored, filter, captureRatio);
       if (!controller.signal.aborted) await onPhotoChange(index, blob);
     } catch (error) {
       if (!controller.signal.aborted)
@@ -271,16 +254,9 @@ export default function Camera({
   };
   const handleReset = () => {
     cancelCapture();
-    if (
-      facingMode !== "user" ||
-      isWidescreen ||
-      activeDeviceIndex !== null ||
-      selectedDevice
-    )
-      setCameraReady(false);
+    if (facingMode !== "user" || selectedDevice) setCameraReady(false);
     onReset();
     setFacingMode("user");
-    setActiveDeviceIndex(null);
     setSelectedDevice("");
     setActualFacing("");
     setTimer(0);
@@ -369,15 +345,15 @@ export default function Camera({
                   cancelCapture();
                   setIsWidescreen((wide) => !wide);
                 }}
-                aria-label={isWidescreen ? "Auto view" : "Wide view"}
+                aria-label={isWidescreen ? "Auto view" : "16:9 frame"}
                 title={
                   isWidescreen
                     ? "Use the view for your screen"
-                    : "Use a wider view"
+                    : "Crop the frame to 16:9"
                 }
               >
                 <FiMaximize2 />
-                <span>{isWidescreen ? "Auto view" : "Wide view"}</span>
+                <span>{isWidescreen ? "Auto view" : "16:9 frame"}</span>
               </button>
             </div>
             <div className="timer-tools" aria-label="Photo timer">
@@ -441,7 +417,7 @@ export default function Camera({
                   ))}
               </select>
               <small>
-                Choose an available lens for wide-angle or close-up photos.
+                Choose a lens available to your browser. The 16:9 frame changes the crop.
               </small>
             </label>
           )}
@@ -462,16 +438,7 @@ export default function Camera({
               videoConstraints={videoConstraints}
               onLoadedData={() => {
                 const track = webcamRef.current?.stream?.getVideoTracks()[0];
-                const label = track?.label ?? "";
-                const inferredFacing =
-                  /back|rear|environment|ultra.?wide|telephoto/i.test(label)
-                    ? "environment"
-                    : /front|user|facetime/i.test(label)
-                      ? "user"
-                      : facingMode;
-                setActualFacing(
-                  track?.getSettings().facingMode || inferredFacing,
-                );
+                setActualFacing(cameraFacing(track, facingMode));
                 setCameraReady(true);
                 setCameraError(null);
               }}
@@ -485,6 +452,7 @@ export default function Camera({
               style={{
                 filter: filterCss(filter),
                 transform: mirrored ? "scaleX(-1)" : "none",
+                objectFit: showFullFrame ? "contain" : "cover",
               }}
             />
             {!cameraReady && !cameraError && (
