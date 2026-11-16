@@ -122,7 +122,7 @@
     position: static;
   }
   .room-capture-preview .preview-stage {
-    max-height: 360px;
+    max-height: none;
   }
   .room-camera-empty {
     max-height: 50svh;

@@ -603,8 +603,7 @@
     position: relative;
   }
   .editor-preview-column {
-    top: calc(81px + env(safe-area-inset-top));
-    z-index: 5;
+    position: static;
     background: white;
     padding-bottom: 10px;
   }
@@ -612,13 +611,11 @@
     display: none;
   }
   .preview-stage {
-    max-height: min(32svh, 280px);
+    max-height: none;
     min-height: 150px;
+    overflow: visible;
     padding: 12px;
     gap: 0;
-  }
-  .preview-stage .photostrip {
-    width: min(var(--photo-width), 178px, calc(100% - 90px));
   }
   .preview-toolbar {
     margin-bottom: 7px;
@@ -654,6 +651,10 @@
 @media (max-height: 550px) and (orientation: landscape) {
   .editor-preview-column {
     position: static;
+  }
+  .preview-stage {
+    max-height: none;
+    overflow: visible;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -736,10 +737,6 @@
   color: #80668f;
 }
 @media (max-width: 767px) {
-  .editor-preview-column:has(.sticker-quick-tools) .preview-stage {
-    max-height: min(24svh, 200px);
-    min-height: 100px;
-  }
   .sticker-quick-tools > span,
   .sticker-quick-tools small {
     display: none;

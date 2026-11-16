@@ -129,6 +129,38 @@ test("editor controls stay reachable on a short phone", async ({
   await page.screenshot({ path: info.outputPath("short-phone-editor.png") });
 });
 
+test("mobile editing shows the full layout even with a sticker selected", async ({ page }, info) => {
+  test.skip(!["chromium-phone", "webkit-ipad"].includes(info.project.name));
+  test.setTimeout(90_000);
+  for (const viewport of [{ width: 390, height: 664 }, { width: 844, height: 390 }]) {
+    await page.setViewportSize(viewport);
+    for (const layout of ["3 x 2", "6 x 1", "1 x 4"]) {
+      await arrange(page, layout);
+      await page.getByRole("button", { name: "Stickers", exact: true }).click();
+      await page.getByRole("button", { name: "Add Nailong hati", exact: true }).click();
+      await expect(page.locator(".sticker-quick-tools")).toBeVisible();
+      const stage = page.locator(".editor-preview-column .preview-stage");
+      const strip = page.getByTestId("photostrip");
+      const stageBox = (await stage.boundingBox())!;
+      const stripBox = (await strip.boundingBox())!;
+      expect(stripBox.y).toBeGreaterThanOrEqual(stageBox.y);
+      expect(stripBox.y + stripBox.height).toBeLessThanOrEqual(stageBox.y + stageBox.height + 1);
+      expect(await stage.evaluate(element => element.scrollHeight - element.clientHeight)).toBeLessThanOrEqual(1);
+      await expect(page.locator(".editor-preview-column")).toHaveCSS("position", "static");
+      const cells = strip.locator("[data-photo-slot]");
+      for (const cell of await cells.all()) {
+        const box = (await cell.boundingBox())!;
+        expect(box.y).toBeGreaterThanOrEqual(stageBox.y);
+        expect(box.y + box.height).toBeLessThanOrEqual(stageBox.y + stageBox.height + 1);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+      if (layout === "3 x 2") {
+        await stage.screenshot({ path: info.outputPath(`full-mobile-editor-${viewport.width}.png`), scale: "css" });
+      }
+    }
+  }
+});
+
 test("patterns, photo filters, captions and character stickers reach both export formats", async ({
   page,
 }, info) => {

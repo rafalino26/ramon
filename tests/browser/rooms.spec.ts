@@ -804,6 +804,17 @@ test("two participants capture and edit together with automatic sync", async ({
     ]);
     await expect(a.locator("[data-sticker-id]")).toHaveCount(2);
     await expect(b.locator("[data-sticker-id]")).toHaveCount(2);
+    if (info.project.name === "chromium-phone") {
+      for (const participant of [a, b]) {
+        const stage = participant.locator(".editor-preview-column .preview-stage");
+        const stageBox = (await stage.boundingBox())!;
+        const stripBox = (await participant.locator('[data-testid="photostrip"]:visible').boundingBox())!;
+        expect(stripBox.y).toBeGreaterThanOrEqual(stageBox.y);
+        expect(stripBox.y + stripBox.height).toBeLessThanOrEqual(stageBox.y + stageBox.height + 1);
+        expect(await stage.evaluate(element => element.scrollHeight - element.clientHeight)).toBeLessThanOrEqual(1);
+      }
+      await a.locator(".editor-preview-column .preview-stage").screenshot({ path: info.outputPath("full-together-editor.png"), scale: "css" });
+    }
     await a.getByRole("button", { name: "Frame", exact: true }).click();
     await a.getByRole("button", { name: "Nailong Sunshine decorated frame", exact: true }).click();
     await expect(b.locator("[data-sticker-id^='frame-kit-']")).toHaveCount(6);
