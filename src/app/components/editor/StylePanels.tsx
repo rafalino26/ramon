@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { FiCheck } from "react-icons/fi";
 import type {
   EditorDesign,
@@ -12,6 +13,9 @@ import { photoFilters, effectsCss, defaultEffects } from "@/lib/photo-filters";
 import { patternSvg, svgUrl } from "@/lib/frame-art";
 import { MiniScene } from "../MemoryArt";
 import RangeField from "./RangeField";
+import { getLayoutAspect, type LayoutInfo } from "@/lib/layout";
+import { MAX_STICKERS } from "@/lib/editor-design";
+import { decoratedFrames, decoratedFramePatch, frameAsset, isFrameDecoration, selectedDecoratedFrame } from "@/lib/decorated-frames";
 
 export interface PanelProps {
   design: EditorDesign;
@@ -55,10 +59,43 @@ const colors = [
   ["Cloud", "#edf0f4"],
   ["Warm paper", "#e9dfcc"],
 ] as const;
-export function FramePanel({ design, onChange, onBegin, onEnd }: PanelProps) {
+export function FramePanel({ design, onChange, onBegin, onEnd, layout }: PanelProps & { layout: LayoutInfo }) {
+  const selectedFrame = selectedDecoratedFrame(design);
+  const customCount = design.stickers.filter(sticker => !isFrameDecoration(sticker)).length;
+  const hasDecorations = design.stickers.some(isFrameDecoration);
   return (
     <section>
-      <h3>Choose a frame</h3>
+      <h3>Already dressed up</h3>
+      <p className="frame-kit-hint">Pick a ready-made frame, then make the little details yours.</p>
+      <div className="decorated-frame-options" aria-label="Decorated frames">
+        {decoratedFrames.map(preset => (
+          <button type="button" key={preset.id} className="decorated-frame-option"
+            aria-label={`${preset.name} decorated frame`}
+            aria-pressed={selectedFrame === preset.id}
+            disabled={customCount + preset.assets.length > MAX_STICKERS}
+            onClick={() => {
+              const patch = decoratedFramePatch(design, preset, getLayoutAspect(layout));
+              if (patch) onChange(patch);
+            }}>
+            <span className="decorated-frame-sample" aria-hidden="true"
+              style={{ backgroundColor: preset.color,
+                backgroundImage: `url("${svgUrl(patternSvg(preset.pattern, preset.accent)!)}")` }}>
+              <span className="decorated-frame-photos"><span /><span /></span>
+              {preset.assets.filter((_, index) => index !== 1 && index !== 4).map((id, index) => (
+                <Image key={index} src={frameAsset(id).src} alt="" width={32} height={32} unoptimized loading="lazy" draggable={false} />
+              ))}
+            </span>
+            <strong>{preset.name}</strong>
+            <span>6 little decorations</span>
+          </button>
+        ))}
+      </div>
+      {customCount > MAX_STICKERS - 6 && <p className="frame-kit-hint" role="status">Free up 6 sticker spaces to use a decorated frame.</p>}
+      {hasDecorations && <button type="button" className="button button-secondary remove-frame-kit"
+        onClick={() => onChange({ stickers: design.stickers.filter(sticker => !isFrameDecoration(sticker)) })}>
+        Remove frame decorations
+      </button>}
+      <h3 className="subsection-title">Frame shape</h3>
       <div className="frame-options expanded-frames">
         {frames.map((frame) => (
           <button

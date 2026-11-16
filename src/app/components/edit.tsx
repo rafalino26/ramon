@@ -379,7 +379,7 @@ export default function Edit({
               </button>
             ))}
           </div>
-          {panel === "frame" && <FramePanel {...common} />}
+          {panel === "frame" && <FramePanel {...common} layout={layout} />}
           {panel === "color" && <ColorPanel {...common} />}
           {panel === "filters" && <FilterPanel {...common} />}
           {panel === "text" && <TextPanel {...common} />}

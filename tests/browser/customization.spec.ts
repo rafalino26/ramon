@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 
 async function arrange(page: Page, layout = "1 x 1", lastSlot = 0) {
   await page.goto("/photobooth");
@@ -50,6 +50,52 @@ test.beforeEach(async ({ page }) => {
       configurable: true,
     }),
   );
+});
+
+test("decorated frames switch cleanly, keep custom stickers and reach the PNG export", async ({ page }, info) => {
+  await arrange(page);
+  await page.getByRole("button", { name: "Stickers", exact: true }).click();
+  await page.getByRole("button", { name: "Add Nailong hati", exact: true }).click();
+  const customId = await page.locator("[data-sticker-id]").getAttribute("data-sticker-id");
+  await page.getByRole("button", { name: "Frame", exact: true }).click();
+  for (const theme of ["Nailong Sunshine", "Nailong Love", "Stitch Blue", "Stitch & Angel", "Daisy Garden", "Sweet Hearts", "Cherry Blossom", "Lavender Bows"]) {
+    const option = page.getByRole("button", { name: `${theme} decorated frame`, exact: true });
+    await option.click();
+    await expect(option).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("[data-sticker-id]")).toHaveCount(7);
+    await expect(page.locator(`[data-sticker-id="${customId}"]`)).toBeVisible();
+  }
+  await page.getByRole("button", { name: "Nailong Sunshine decorated frame", exact: true }).click();
+  const decorated = await downloadedPixels(page);
+  await writeFile(info.outputPath("decorated-export.png"), Buffer.from(decorated, "base64"));
+  await page.getByRole("button", { name: "Remove frame decorations", exact: true }).click();
+  await expect(page.locator("[data-sticker-id]")).toHaveCount(1);
+  const plain = await downloadedPixels(page);
+  const difference = await page.evaluate(async ({ decorated, plain }) => {
+    const decode = async (data: string) => {
+      const image = new Image();
+      image.src = `data:image/png;base64,${data}`;
+      await image.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d")!;
+      context.drawImage(image, 0, 0);
+      return context.getImageData(0, 0, canvas.width, canvas.height).data;
+    };
+    const a = await decode(decorated), b = await decode(plain);
+    let changed = 0;
+    for (let i = 0; i < a.length; i += 4) {
+      if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) > 40) changed++;
+    }
+    return changed;
+  }, { decorated, plain });
+  expect(difference).toBeGreaterThan(2000);
+  await page.getByRole("button", { name: "Undo design change", exact: true }).click();
+  await expect(page.locator("[data-sticker-id]")).toHaveCount(7);
+  await expect(page.getByRole("button", { name: "Nailong Sunshine decorated frame", exact: true })).toHaveAttribute("aria-pressed", "true");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await page.getByTestId("photostrip").screenshot({ path: info.outputPath("decorated-frame.png"), scale: "css" });
 });
 
 test("editor controls stay reachable on a short phone", async ({

@@ -804,6 +804,18 @@ test("two participants capture and edit together with automatic sync", async ({
     ]);
     await expect(a.locator("[data-sticker-id]")).toHaveCount(2);
     await expect(b.locator("[data-sticker-id]")).toHaveCount(2);
+    await a.getByRole("button", { name: "Frame", exact: true }).click();
+    await a.getByRole("button", { name: "Nailong Sunshine decorated frame", exact: true }).click();
+    await expect(b.locator("[data-sticker-id^='frame-kit-']")).toHaveCount(6);
+    await expect(b.locator("[data-sticker-id]")).toHaveCount(8);
+    await b.getByRole("button", { name: "Frame", exact: true }).click();
+    await b.getByRole("button", { name: "Stitch & Angel decorated frame", exact: true }).click();
+    await expect(a.getByRole("button", { name: "Stitch & Angel decorated frame", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(a.locator("[data-sticker-id]")).toHaveCount(8);
+    await a.getByRole("button", { name: "Remove frame decorations", exact: true }).click();
+    await expect(b.locator("[data-sticker-id]")).toHaveCount(2);
+    await a.getByRole("button", { name: "Stickers", exact: true }).click();
+    await b.getByRole("button", { name: "Stickers", exact: true }).click();
     await a.getByLabel("Upload custom sticker", { exact: true }).setInputFiles({
       name: "custom.jpg",
       mimeType: "image/jpeg",
@@ -827,6 +839,8 @@ test("two participants capture and edit together with automatic sync", async ({
     );
     if (!process.env.RAMON_LIVE_ROOM_TEST) {
       await a.getByRole("button", { name: "Frame", exact: true }).click();
+      await a.getByRole("button", { name: "Thin", exact: true }).click();
+      await expect(b.locator('[data-testid="photostrip"]:visible')).toHaveClass(/frame-thin/);
       interruptNextEdit = true;
       await a.getByRole("button", { name: "Rounded", exact: true }).click();
       await expect(a.getByTestId("design-sync-status")).toContainText(
