@@ -12,6 +12,66 @@ interface DecoratedFrame {
 
 export const decoratedFrames: readonly DecoratedFrame[] = [
   {
+    id: "full-nailong", name: "Full Nailong",
+    color: "#fff3c4", accent: "#dfb15b", pattern: "none",
+    assets: ["nailong-semangat", "nailong-melet", "nailong-headphone", "nailong-berdiri", "nailong-jungkir", "nailong-bajak-laut"],
+  },
+  {
+    id: "nailong-playtime", name: "Nailong Playtime",
+    color: "#ffedce", accent: "#dca474", pattern: "dots",
+    assets: ["nailong-jungkir", "nailong-bajak-laut", "nailong-melet", "nailong-semangat", "nailong-berdiri", "nailong-headphone"],
+  },
+  {
+    id: "nailong-chill", name: "Nailong Chill",
+    color: "#f1eaff", accent: "#b5a0d2", pattern: "grid",
+    assets: ["nailong-headphone", "nailong-manyun", "nailong-khawatir", "nailong-berdiri", "nailong-melet", "nailong-semangat"],
+  },
+  {
+    id: "full-stitch", name: "Full Stitch",
+    color: "#e5f1ff", accent: "#9ab9de", pattern: "none",
+    assets: ["stitchblue", "stitchblue1", "stitchblue2", "stitchblue3", "stitchblue1", "stitchblue"],
+  },
+  {
+    id: "stitch-party", name: "Stitch Party",
+    color: "#e3f7f3", accent: "#a0c9c9", pattern: "dots",
+    assets: ["stitchblue3", "stitchblue2", "stitchblue", "stitchblue1", "stitchblue3", "stitchblue2"],
+  },
+  {
+    id: "full-angel", name: "Full Angel",
+    color: "#fce8f3", accent: "#dba2c3", pattern: "none",
+    assets: ["stitchpink", "stitchpink1", "stitchpink2", "stitchpink", "stitchpink2", "stitchpink1"],
+  },
+  {
+    id: "full-flowers", name: "Full Flowers",
+    color: "#f3f6e6", accent: "#a4b989", pattern: "none",
+    assets: ["cute-daisy", "cute-tulip", "cute-cherry-blossom", "cute-sunflower", "cute-tulip", "cute-daisy"],
+  },
+  {
+    id: "daisy-meadow", name: "Daisy Meadow",
+    color: "#f5f7dd", accent: "#b9c788", pattern: "dots",
+    assets: ["cute-daisy", "cute-daisy", "cute-daisy", "cute-daisy", "cute-daisy", "cute-daisy"],
+  },
+  {
+    id: "tulip-bloom", name: "Tulip Bloom",
+    color: "#ffedf3", accent: "#d6a4bb", pattern: "none",
+    assets: ["cute-tulip", "cute-tulip", "cute-tulip", "cute-tulip", "cute-tulip", "cute-tulip"],
+  },
+  {
+    id: "sunflower-day", name: "Sunflower Day",
+    color: "#fff5d9", accent: "#d7b867", pattern: "dots",
+    assets: ["cute-sunflower", "cute-sunflower", "cute-sunflower", "cute-sunflower", "cute-sunflower", "cute-sunflower"],
+  },
+  {
+    id: "sakura-petals", name: "Sakura Petals",
+    color: "#fff0f3", accent: "#e1b0bd", pattern: "none",
+    assets: ["cute-cherry-blossom", "cute-cherry-blossom", "cute-cherry-blossom", "cute-cherry-blossom", "cute-cherry-blossom", "cute-cherry-blossom"],
+  },
+  {
+    id: "full-hearts", name: "Full Hearts",
+    color: "#f8eaff", accent: "#cea0cf", pattern: "hearts",
+    assets: ["cute-purple-heart", "cute-two-hearts", "cute-pink-heart", "cute-purple-heart", "cute-pink-heart", "cute-two-hearts"],
+  },
+  {
     id: "nailong-sunshine", name: "Nailong Sunshine",
     color: "#fff4ce", accent: "#d7a758", pattern: "dots",
     assets: ["nailong-semangat", "cute-glowing-star", "cute-sunflower", "nailong-berdiri", "cute-sparkles", "cute-daisy"],

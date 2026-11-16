@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
+import { decoratedFrames } from "../../src/lib/decorated-frames";
 
 async function arrange(page: Page, layout = "1 x 1", lastSlot = 0) {
   await page.goto("/photobooth");
@@ -53,12 +54,13 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("decorated frames switch cleanly, keep custom stickers and reach the PNG export", async ({ page }, info) => {
+  test.setTimeout(90_000);
   await arrange(page);
   await page.getByRole("button", { name: "Stickers", exact: true }).click();
   await page.getByRole("button", { name: "Add Nailong hati", exact: true }).click();
   const customId = await page.locator("[data-sticker-id]").getAttribute("data-sticker-id");
   await page.getByRole("button", { name: "Frame", exact: true }).click();
-  for (const theme of ["Nailong Sunshine", "Nailong Love", "Stitch Blue", "Stitch & Angel", "Daisy Garden", "Sweet Hearts", "Cherry Blossom", "Lavender Bows"]) {
+  for (const { name: theme } of decoratedFrames) {
     const option = page.getByRole("button", { name: `${theme} decorated frame`, exact: true });
     await option.click();
     await expect(option).toHaveAttribute("aria-pressed", "true");

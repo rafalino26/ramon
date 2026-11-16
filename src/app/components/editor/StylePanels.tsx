@@ -68,7 +68,9 @@ export function FramePanel({ design, onChange, onBegin, onEnd, layout }: PanelPr
       <h3>Already dressed up</h3>
       <p className="frame-kit-hint">Pick a ready-made frame, then make the little details yours.</p>
       <div className="decorated-frame-options" aria-label="Decorated frames">
-        {decoratedFrames.map(preset => (
+        {decoratedFrames.map(preset => {
+          const background = patternSvg(preset.pattern, preset.accent);
+          return (
           <button type="button" key={preset.id} className="decorated-frame-option"
             aria-label={`${preset.name} decorated frame`}
             aria-pressed={selectedFrame === preset.id}
@@ -79,7 +81,7 @@ export function FramePanel({ design, onChange, onBegin, onEnd, layout }: PanelPr
             }}>
             <span className="decorated-frame-sample" aria-hidden="true"
               style={{ backgroundColor: preset.color,
-                backgroundImage: `url("${svgUrl(patternSvg(preset.pattern, preset.accent)!)}")` }}>
+                backgroundImage: background ? `url("${svgUrl(background)}")` : undefined }}>
               <span className="decorated-frame-photos"><span /><span /></span>
               {preset.assets.filter((_, index) => index !== 1 && index !== 4).map((id, index) => (
                 <Image key={index} src={frameAsset(id).src} alt="" width={32} height={32} unoptimized loading="lazy" draggable={false} />
@@ -88,7 +90,8 @@ export function FramePanel({ design, onChange, onBegin, onEnd, layout }: PanelPr
             <strong>{preset.name}</strong>
             <span>6 little decorations</span>
           </button>
-        ))}
+          );
+        })}
       </div>
       {customCount > MAX_STICKERS - 6 && <p className="frame-kit-hint" role="status">Free up 6 sticker spaces to use a decorated frame.</p>}
       {hasDecorations && <button type="button" className="button button-secondary remove-frame-kit"
