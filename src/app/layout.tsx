@@ -25,6 +25,11 @@ export const metadata: Metadata = {
   },
   description:
     "Your happy little online photobooth. Pick a layout, take a photo, and turn a little moment into a memory. No account needed.",
+  icons: {
+    icon: [{ url: "/ramon-flower.png?v=2", sizes: "192x192", type: "image/png" }],
+    shortcut: "/favicon.ico?v=2",
+    apple: [{ url: "/apple-icon.png?v=2", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export const viewport: Viewport = {
