@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type Dispatch } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch } from "react";
 import {
   FiArrowRight,
   FiCheck,
@@ -37,6 +37,9 @@ import type { DownloadFormat } from "@/lib/extra-exports";
 import PhotostripPreview from "./photostrip";
 import { Flower } from "./MemoryArt";
 import StickerPanel from "./editor/StickerPanel";
+import PhotoEditor from "./editor/PhotoEditor";
+import { effectsCss } from "@/lib/photo-filters";
+import { FiEye } from "react-icons/fi";
 import {
   FramePanel,
   ColorPanel,
@@ -53,6 +56,8 @@ interface Props {
   history?: { canUndo: boolean; canRedo: boolean };
   assetsReady?: boolean;
   active?: boolean;
+  onApplyPhoto?: (index: number, source: string, blob: Blob) => Promise<void>;
+  photoHistory?: { canUndo: boolean; canRedo: boolean; undo: () => Promise<void>; redo: () => Promise<void> };
 }
 const tabs = [
   { id: "frame", label: "Frame", icon: FiGrid },
@@ -72,6 +77,8 @@ export default function Edit({
   history,
   assetsReady = true,
   active = true,
+  onApplyPhoto,
+  photoHistory,
 }: Props) {
   const { layout, images, design } = session;
   const [panel, setPanel] = useState<Panel>("frame");
@@ -79,6 +86,11 @@ export default function Edit({
   const [filename, setFilename] = useState("ramon-photobooth");
   const [copied, setCopied] = useState(false);
   const preview = useRef<HTMLDivElement>(null);
+  const previewColumn = useRef<HTMLDivElement>(null);
+  const saveSection = useRef<HTMLElement>(null);
+  const [photoTarget, setPhotoTarget] = useState<{ index: number; source: string; aspect: number } | null>(null);
+  const [lastEdit, setLastEdit] = useState<"design" | "photo">("design");
+  const [photoError, setPhotoError] = useState("");
   const {
     ready: exportReady,
     isSaving,
@@ -97,10 +109,17 @@ export default function Edit({
   useEffect(() => {
     setCopied(false);
   }, [images, design]);
-  const change = (patch: Partial<EditorDesign>) =>
+  const change = (patch: Partial<EditorDesign>) => {
+    setLastEdit("design");
     dispatch({ type: "design", patch });
-  const begin = () => dispatch({ type: "design-begin" });
+  };
+  const begin = () => { setLastEdit("design"); dispatch({ type: "design-begin" }); };
   const end = () => dispatch({ type: "design-end" });
+  const undoEdit = useCallback((redo = false) => {
+    if (lastEdit === "photo" && photoHistory) {
+      void (redo ? photoHistory.redo() : photoHistory.undo()).catch(cause => setPhotoError(cause.message));
+    } else dispatch({ type: redo ? "redo" : "undo" });
+  }, [lastEdit, photoHistory, dispatch]);
   useEffect(() => {
     if (selected && !design.stickers.some((sticker) => sticker.id === selected))
       setSelected(null);
@@ -113,7 +132,7 @@ export default function Edit({
   }, [selected]);
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
-      if (readOnly || !active) return;
+      if (readOnly || !active || photoTarget) return;
       const target = event.target;
       if (
         target instanceof HTMLElement &&
@@ -125,13 +144,13 @@ export default function Edit({
         return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
-        dispatch({ type: event.shiftKey ? "redo" : "undo" });
+        undoEdit(event.shiftKey);
       }
       if (event.key === "Escape") setSelected(null);
     };
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
-  }, [dispatch, readOnly, active]);
+  }, [undoEdit, readOnly, active, photoTarget]);
   const updateSticker = (id: string, patch: Partial<PlacedSticker>) =>
     change({
       stickers: design.stickers.map((sticker) =>
@@ -206,7 +225,7 @@ export default function Edit({
     );
   return (
     <div className="editor-workspace">
-      <div className="editor-preview-column">
+      <div className="editor-preview-column" ref={previewColumn}>
         <div className="summary-label">
           <span>Your little masterpiece</span>
           <span className="small-badge">{layout.label}</span>
@@ -217,7 +236,7 @@ export default function Edit({
               <button
                 type="button"
                 className="small-icon-button"
-                aria-label="Undo design change"
+                aria-label={!history && session.past.at(-1)?.photoEdit ? "Undo photo edit" : "Undo design change"}
                 title="Undo (Ctrl / Cmd Z)"
                 disabled={history ? !history.canUndo : !session.past.length}
                 onClick={() => dispatch({ type: "undo" })}
@@ -227,7 +246,7 @@ export default function Edit({
               <button
                 type="button"
                 className="small-icon-button"
-                aria-label="Redo design change"
+                aria-label={!history && session.future[0]?.photoEdit ? "Redo photo edit" : "Redo design change"}
                 title="Redo (Shift Ctrl / Cmd Z)"
                 disabled={history ? !history.canRedo : !session.future.length}
                 onClick={() => dispatch({ type: "redo" })}
@@ -339,6 +358,8 @@ export default function Edit({
             </div>
           )}
         </fieldset>
+        {onApplyPhoto && <p className="photo-adjust-hint">Tap a photo to adjust its crop, zoom or rotation.</p>}
+        {photoError && <p className="notice-error" role="alert">{photoError}</p>}
         <div className="preview-stage">
           <PhotostripPreview
             ref={preview}
@@ -351,6 +372,12 @@ export default function Edit({
             onRemoveSticker={removeSticker}
             onBegin={begin}
             onEnd={end}
+            onEditPhoto={onApplyPhoto && !readOnly && active && assetsReady ? (index, aspect) => {
+              const source = images[index];
+              if (!source) return;
+              setSelected(null);
+              setPhotoTarget({ index, source, aspect });
+            } : undefined}
           />
           <span className="preview-caption">
             {design.stickers.length
@@ -401,7 +428,7 @@ export default function Edit({
             />
           )}
         </fieldset>
-        <section className="save-section">
+        <section className="save-section" ref={saveSection}>
           <div className="save-heading">
             <h3>Keep this little moment.</h3>
             <span
@@ -496,6 +523,25 @@ export default function Edit({
           </p>
         </section>
       </div>
+      {photoTarget && onApplyPhoto && active && (
+        <PhotoEditor key={`${photoTarget.index}:${photoTarget.source}`} {...photoTarget}
+          filter={effectsCss(design.effects)} stale={images[photoTarget.index] !== photoTarget.source}
+          onClose={() => setPhotoTarget(null)}
+          onApply={async blob => {
+            await onApplyPhoto(photoTarget.index, photoTarget.source, blob);
+            setLastEdit("photo");
+          }} />
+      )}
+      {active && <nav className="mobile-editor-toolbar" aria-label="Mobile editor actions">
+        <button type="button" disabled={readOnly || (lastEdit === "photo" && photoHistory ? !photoHistory.canUndo : history ? !history.canUndo : !session.past.length)}
+          aria-label={lastEdit === "photo" && photoHistory ? "Undo photo edit" : "Undo last edit"}
+          onClick={() => undoEdit()}><FiRotateCcw /><span>Undo</span></button>
+        <button type="button" disabled={readOnly || (lastEdit === "photo" && photoHistory ? !photoHistory.canRedo : history ? !history.canRedo : !session.future.length)}
+          aria-label={lastEdit === "photo" && photoHistory ? "Redo photo edit" : "Redo last edit"}
+          onClick={() => undoEdit(true)}><FiRotateCw /><span>Redo</span></button>
+        <button type="button" onClick={() => previewColumn.current?.scrollIntoView({ behavior: "smooth", block: "start" })}><FiEye /><span>View result</span></button>
+        <button type="button" onClick={() => saveSection.current?.scrollIntoView({ behavior: "smooth", block: "start" })}><FiDownload /><span>Download options</span></button>
+      </nav>}
     </div>
   );
 }

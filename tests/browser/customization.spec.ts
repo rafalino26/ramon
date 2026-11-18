@@ -4,6 +4,9 @@ import { decoratedFrames } from "../../src/lib/decorated-frames";
 
 async function arrange(page: Page, layout = "1 x 1", lastSlot = 0) {
   await page.goto("/photobooth");
+  const fresh = page.getByRole("button", { name: "Start fresh", exact: true });
+  await expect(fresh.or(page.getByRole("button", { name: "Layout", exact: true }))).toBeVisible();
+  if (await fresh.isVisible()) await fresh.click();
   await page
     .getByRole("button", { name: `${layout} layout`, exact: true })
     .click();
@@ -141,8 +144,11 @@ test("mobile editing shows the full layout even with a sticker selected", async 
       await expect(page.locator(".sticker-quick-tools")).toBeVisible();
       const stage = page.locator(".editor-preview-column .preview-stage");
       const strip = page.getByTestId("photostrip");
-      const stageBox = (await stage.boundingBox())!;
-      const stripBox = (await strip.boundingBox())!;
+      await stage.scrollIntoViewIfNeeded();
+      const { stageBox, stripBox } = await stage.evaluate(element => ({
+        stageBox: element.getBoundingClientRect().toJSON(),
+        stripBox: element.querySelector("[data-testid='photostrip']")!.getBoundingClientRect().toJSON(),
+      }));
       expect(stripBox.y).toBeGreaterThanOrEqual(stageBox.y);
       expect(stripBox.y + stripBox.height).toBeLessThanOrEqual(stageBox.y + stageBox.height + 1);
       expect(await stage.evaluate(element => element.scrollHeight - element.clientHeight)).toBeLessThanOrEqual(1);
@@ -305,6 +311,7 @@ test("custom sticker layers keep transparency, transforms and undo history acros
   await expect(page.locator(".placed-sticker")).toHaveCount(1);
   const source = await page.locator(".placed-sticker img").getAttribute("src");
   const placed = page.locator(".placed-sticker");
+  await placed.evaluate(element => element.scrollIntoView({ block: "center", behavior: "instant" }));
   const startLeft = await placed.evaluate((element) => element.style.left);
   const box = await placed.boundingBox();
   await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);

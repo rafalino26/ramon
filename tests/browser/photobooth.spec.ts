@@ -29,6 +29,9 @@ async function arrange(
   color = "#ff0000",
 ) {
   await page.goto("/photobooth");
+  const fresh = page.getByRole("button", { name: "Start fresh", exact: true });
+  await expect(fresh.or(page.getByRole("button", { name: "Layout", exact: true }))).toBeVisible();
+  if (await fresh.isVisible()) await fresh.click();
   await page.getByText(layout, { exact: true }).click();
   await page.getByRole("button", { name: "Upload photos" }).click();
   const upload = page.waitForEvent("filechooser");

@@ -26,6 +26,8 @@ export default function RoomEditor({
   photosReady = true,
   onPreview,
   retakeCount = 1,
+  onApplyPhoto,
+  photoHistory,
 }: {
   layout: LayoutInfo;
   images: (string | null)[];
@@ -42,6 +44,8 @@ export default function RoomEditor({
   resolveAsset: (source: string) => Promise<string>;
   onRetake: () => Promise<void>;
   retakeCount?: number;
+  onApplyPhoto?: (index: number, source: string, blob: Blob) => Promise<void>;
+  photoHistory?: { canUndo: boolean; canRedo: boolean; undo: () => Promise<void>; redo: () => Promise<void> };
 }) {
   const collaboration = useRoomDesign({
     room,
@@ -141,8 +145,14 @@ export default function RoomEditor({
           <FiCamera />
           {retakeCount === 1 ? "Retake the last photo" : "Retake the last pair"}
         </button>
+        {photoHistory && active && <>
+          <button type="button" className="button button-secondary" disabled={!photoHistory.canUndo || busy} onClick={() => void photoHistory.undo().catch(() => {})}>Undo photo adjustment</button>
+          <button type="button" className="button button-secondary" disabled={!photoHistory.canRedo || busy} onClick={() => void photoHistory.redo().catch(() => {})}>Redo photo adjustment</button>
+        </>}
       </div>
       <Edit
+        onApplyPhoto={onApplyPhoto}
+        photoHistory={photoHistory}
         session={{
           ...createSession(),
           layout,

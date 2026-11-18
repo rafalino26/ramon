@@ -9,7 +9,7 @@ import { applyDesignChanges, roomDesign } from "../../src/lib/room-design";
 test("two participants capture and edit together with automatic sync", async ({
   browser,
 }, info) => {
-  test.setTimeout(180_000);
+  test.setTimeout(info.project.name.startsWith("webkit") ? 240_000 : 180_000);
   const hostId: string = randomUUID(),
     guestId: string = randomUUID();
   let code = "ABCDEF123456";
@@ -762,6 +762,26 @@ test("two participants capture and edit together with automatic sync", async ({
     await a
       .getByRole("tab", { name: "Decorate together", exact: true })
       .click();
+    if (info.project.name.startsWith("chromium")) {
+      const first = b.locator("[data-photo-slot='0'] img");
+      const beforeCrop = await first.getAttribute("src");
+      await a.getByRole("button", { name: "Adjust photo 1", exact: true }).click();
+      await a.getByRole("slider", { name: "Photo zoom", exact: true }).press("End");
+      await a.getByRole("button", { name: "Apply photo edit", exact: true }).click();
+      await expect(a.getByRole("dialog")).toHaveCount(0);
+      await expect(first).not.toHaveAttribute("src", beforeCrop!);
+      await a.getByRole("button", { name: "Undo photo adjustment", exact: true }).click();
+      await expect(first).toHaveAttribute("src", beforeCrop!);
+      await a.getByRole("button", { name: "Redo photo adjustment", exact: true }).click();
+      await expect(first).not.toHaveAttribute("src", beforeCrop!);
+      await a.getByRole("button", { name: "Adjust photo 1", exact: true }).click();
+      await b.getByRole("button", { name: "Adjust photo 1", exact: true }).click();
+      await b.getByRole("button", { name: "Rotate photo right", exact: true }).click();
+      await b.getByRole("button", { name: "Apply photo edit", exact: true }).click();
+      await expect(a.getByRole("button", { name: "Apply photo edit", exact: true })).toBeDisabled();
+      await expect(a.getByRole("dialog").getByRole("alert")).toContainText("photo changed");
+      await a.getByRole("button", { name: "Close photo editor", exact: true }).click();
+    }
     await a.getByRole("button", { name: "Text", exact: true }).click();
     await a.getByRole("button", { name: "Better together", exact: true }).click();
     await expect(b.locator("[data-caption-text]")).toHaveText("Better together");

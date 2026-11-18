@@ -863,3 +863,113 @@
   margin-top: 12px;
   font-size: 12px;
 }
+.photo-adjust-trigger {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.photo-adjust-trigger > span {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  color: #fff;
+  background: #513375b8;
+}
+.photo-adjust-trigger > span svg { width: 16px; height: 16px; }
+.photo-adjust-hint,
+.local-draft-status {
+  color: #7b6889;
+  font-size: 12px;
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+.photo-edit-dialog {
+  width: min(560px, calc(100% - 24px));
+  max-height: calc(100svh - 24px);
+  margin: auto;
+  padding: 20px;
+  border: 1px solid #e5d6f1;
+  border-radius: 22px;
+  background: #fffaff;
+  color: #30253f;
+  overflow-y: auto;
+}
+.photo-edit-dialog::backdrop { background: #25193599; }
+.photo-edit-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.photo-edit-heading h2 { font-size: 21px; }
+.photo-edit-dialog > p { font-size: 13px; margin-block: 12px; }
+.photo-edit-canvas-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 10px;
+  border-radius: 14px;
+  background: #eee5f6;
+}
+.photo-edit-canvas-wrap canvas {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 42svh;
+  touch-action: none;
+  cursor: grab;
+  object-fit: contain;
+}
+.photo-edit-controls { border: 0; padding: 0; margin-block: 14px; }
+.photo-edit-controls label { display: block; font-size: 13px; margin-block: 12px; }
+.photo-edit-controls output { float: right; }
+.photo-edit-controls input { display: block; width: 100%; margin-top: 9px; accent-color: #8552cf; }
+.photo-edit-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.photo-edit-actions .button { flex: 1; min-height: 44px; padding: 10px; font-size: 13px; }
+.mobile-editor-toolbar { display: none; }
+.draft-prompt { text-align: center; max-width: 640px; margin-inline: auto; }
+.draft-prompt > svg { width: 56px; height: 56px; margin: 0 auto 20px; }
+.draft-prompt h1 { font-size: clamp(24px, 5vw, 36px); margin-bottom: 16px; }
+.draft-prompt p { line-height: 1.7; margin-bottom: 12px; }
+.draft-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+.editor-preview-column, .save-section { scroll-margin-top: calc(96px + env(safe-area-inset-top)); }
+@media (max-width: 767px), (max-height: 550px) and (pointer: coarse) {
+  .editor-workspace { padding-bottom: calc(90px + env(safe-area-inset-bottom)); }
+  .mobile-editor-toolbar {
+    position: fixed;
+    z-index: 40;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    padding: 8px max(8px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    border-top: 1px solid #e5d6f1;
+    background: #fffafff5;
+    box-shadow: 0 -4px 20px #30253f0d;
+  }
+  .mobile-editor-toolbar button {
+    display: grid;
+    justify-items: center;
+    gap: 5px;
+    min-height: 48px;
+    padding: 6px 2px;
+    border-radius: 12px;
+    color: #7041b9;
+    font-size: 10px;
+  }
+  .mobile-editor-toolbar button:last-child { background: #eee3fa; }
+  .mobile-editor-toolbar button:disabled { opacity: 0.4; }
+  .mobile-editor-toolbar svg { width: 19px; height: 19px; }
+}

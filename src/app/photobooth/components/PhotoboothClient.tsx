@@ -12,6 +12,7 @@ import {
   type PhotoboothTab,
 } from "@/lib/photobooth-session";
 import { usePhotoUrls } from "@/hooks/use-photo-urls";
+import { useLocalDraft } from "@/hooks/use-local-draft";
 
 function LoadingPanel() {
   return (
@@ -44,6 +45,7 @@ export default function PhotoboothClient() {
   const ownedSources = useMemo(
     () => [
       ...images,
+      ...[...session.past, ...session.future].flatMap(entry => entry.photoEdit ? [entry.photoEdit.source, entry.photoEdit.expected] : []),
       ...[
         session.design,
         ...session.past,
@@ -54,6 +56,7 @@ export default function PhotoboothClient() {
     [images, session.design, session.past, session.future, session.transaction],
   );
   const createPhotoUrl = usePhotoUrls(ownedSources);
+  const localDraft = useLocalDraft(session, restored => dispatch({ type: "restore", session: restored }), createPhotoUrl);
   const setActiveTab = (tab: PhotoboothTab) => {
     dispatch({ type: "tab", tab });
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -68,6 +71,25 @@ export default function PhotoboothClient() {
     },
     [createPhotoUrl],
   );
+
+  if (localDraft.status === "loading") return <LoadingPanel />;
+  if (localDraft.status === "prompt") {
+    return (
+      <div className="page-width studio">
+        <section className="workspace draft-prompt" aria-labelledby="draft-heading">
+          <Flower />
+          <h1 id="draft-heading">Your little moment is still here.</h1>
+          <p>Continue the photo session saved on this browser, or start fresh.</p>
+          <p>{Array.isArray(localDraft.draft?.images) ? localDraft.draft.images.filter(Boolean).length : 0} photos · {new Date(localDraft.draft?.savedAt ?? 0).toLocaleString()}</p>
+          {localDraft.error && <p role="alert" className="notice-error">{localDraft.error}</p>}
+          <div className="draft-actions">
+            <button type="button" className="button button-primary" onClick={localDraft.resume}>Continue draft</button>
+            <button type="button" className="button button-secondary" onClick={() => void localDraft.discard()}>Start fresh</button>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="page-width studio">
@@ -86,6 +108,9 @@ export default function PhotoboothClient() {
           <FiLock /> Your photos stay with you
         </span>
       </header>
+      {activeTab !== "camera" && (images.some(Boolean) || localDraft.error) && <p className="local-draft-status" role="status">
+        {localDraft.error || (images.some(Boolean) ? localDraft.saving ? "Saving draft on this device…" : localDraft.savedAt ? "Draft saved on this device" : "" : "")}
+      </p>}
       <nav className="studio-steps" aria-label="Photobooth steps">
         {tabs.map((tab, index) => (
           <button
@@ -136,6 +161,10 @@ export default function PhotoboothClient() {
             dispatch={dispatch}
             createStickerSource={createPhotoUrl}
             onChooseLayout={() => setActiveTab("layout")}
+            onApplyPhoto={async (index, source, blob) => {
+              if (images[index] !== source) throw new Error("This photo changed. Reopen the updated photo.");
+              dispatch({ type: "edit-photo", index, source: createPhotoUrl(blob), expected: source });
+            }}
           />
         )}
       </section>

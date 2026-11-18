@@ -130,12 +130,12 @@ export default function RoomStudio({
     setNotice("");
     setTab("photos");
   };
-  const share = async (blob: Blob) => {
+  const share = async (blob: Blob, targetOverride?: { index: number; expected: string | null }) => {
     if (lock.current) throw new Error("Please wait for the current photo.");
     lock.current = true;
     setWorking(true);
     setError("");
-    const target = selected;
+    const target = targetOverride ?? selected;
     const key = `${room.state.captureId}:${target ? `${target.index}:${target.expected}` : "auto"}`;
     let record = submissions.current.get(blob)?.get(key);
     try {
@@ -490,6 +490,16 @@ export default function RoomStudio({
           active={tab === "decorate"}
           photosReady={ready}
           onPreview={setPreviewDesign}
+          onApplyPhoto={single ? async (index, source, blob) => {
+            if (images[index] !== source) throw new Error("Your partner changed this photo. Reopen it to edit the latest version.");
+            await share(blob, { index, expected: room.state.photos[index] ?? null });
+          } : undefined}
+          photoHistory={single ? {
+            canUndo: !!history?.undo && !disabled,
+            canRedo: !!history?.redo && !disabled,
+            undo: async () => { await mutate("undo"); },
+            redo: async () => { await mutate("redo"); },
+          } : undefined}
           onRetake={async () => {
             if (single) {
               if (lastPhoto >= 0) choose(lastPhoto);

@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef, type CSSProperties } from "react";
-import { FiCamera } from "react-icons/fi";
+import { FiCamera, FiSliders } from "react-icons/fi";
 import {
   getCells,
   getCellStyle,
@@ -27,6 +27,7 @@ interface Props {
   onRemoveSticker: (id: string) => void;
   onBegin: () => void;
   onEnd: () => void;
+  onEditPhoto?: (index: number, aspect: number) => void;
 }
 const PhotostripPreview = forwardRef<HTMLDivElement, Props>(
   (
@@ -40,6 +41,7 @@ const PhotostripPreview = forwardRef<HTMLDivElement, Props>(
       onRemoveSticker,
       onBegin,
       onEnd,
+      onEditPhoto,
     },
     ref,
   ) => {
@@ -83,7 +85,16 @@ const PhotostripPreview = forwardRef<HTMLDivElement, Props>(
               className={`photostrip-cell photo-shape-${design.photoShape}`}
               style={getCellStyle(cell)}
             >
-              {images[index] ? (
+              {images[index] && onEditPhoto ? (
+                <button type="button" className="photo-adjust-trigger" aria-label={`Adjust photo ${index + 1}`}
+                  onClick={event => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    onEditPhoto(index, rect.width / rect.height);
+                  }}>
+                  <img src={images[index]!} alt={`slot ${index + 1}`} draggable={false} style={{ filter: effectsCss(design.effects) }} />
+                  <span aria-hidden="true"><FiSliders /></span>
+                </button>
+              ) : images[index] ? (
                 <img
                   src={images[index]!}
                   alt={`slot ${index + 1}`}
